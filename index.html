@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineLog</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     SETUP SCREEN
+══════════════════════════════════════════════ -->
+<div id="setup-overlay" style="display:none">
+  <h1>Cine<span>Log</span></h1>
+  <p>Benvenuto! Come vuoi visualizzare le valutazioni?</p>
+
+  <div class="setup-choices">
+    <div class="setup-card" onclick="chooseRating('stars')">
+      <h3>★ Stelle</h3>
+      <p>Da ½ a 5 stelle</p>
+    </div>
+    <div class="setup-card" onclick="chooseRating('numeric')">
+      <h3>0 – 10</h3>
+      <p>Voto numerico</p>
+    </div>
+    <div class="setup-card" onclick="chooseRating('both')">
+      <h3>Entrambi</h3>
+      <p>Stelle + voto numerico sincronizzati</p>
+    </div>
+  </div>
+
+  <div id="setup-tmdb-section" style="display:none;flex-direction:column;align-items:center;gap:.75rem;margin-top:1rem">
+    <p style="color:var(--text2);font-size:.9rem;max-width:440px;text-align:center">
+      Inserisci la tua chiave API TMDB per la ricerca automatica (opzionale).<br>
+      <span style="color:var(--text3);font-size:.82rem">Supporta <b style="color:var(--text2)">API Key v3</b> e <b style="color:var(--text2)">Read Access Token v4</b> (eyJ...)</span>
+    </p>
+    <div class="input-group" style="max-width:440px;width:100%">
+      <input id="setup-tmdb-input" class="form-input" placeholder="API Key v3  oppure  eyJ... (token v4)">
+      <button class="btn btn-primary" onclick="setupSaveTmdb()">Continua</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="setupSkipTmdb()">Salta — solo inserimento manuale</button>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════
+     APP
+══════════════════════════════════════════════ -->
+<div id="app">
+
+  <header>
+    <div class="logo">Cine<span>Log</span></div>
+
+    <nav>
+      <button class="nav-btn active" onclick="showPage('library')">Libreria</button>
+      <button class="nav-btn" onclick="showPage('watchlist')" style="position:relative">
+        Da vedere
+        <span class="nav-badge" id="watchlist-badge" style="display:none">0</span>
+      </button>
+      <button class="nav-btn" onclick="showPage('saghe')">Saghe</button>
+    </nav>
+
+    <div class="header-actions">
+      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ <span>Impostazioni</span></button>
+      <button class="btn btn-primary" onclick="openAdd()">+ Aggiungi</button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ── LIBRERIA ── -->
+    <div class="page active" id="page-library">
+      <div class="stats-bar" id="stats-bar"></div>
+      <div class="filters">
+        <button class="filter-btn active" onclick="setFilter('all',this)">Tutti</button>
+        <button class="filter-btn" onclick="setFilter('movie',this)">Film</button>
+        <button class="filter-btn" onclick="setFilter('series',this)">Serie</button>
+        <button class="filter-btn" onclick="setFilter('unrated',this)">Da valutare</button>
+        <div class="search-wrap">
+          <input type="text" id="search-input" placeholder="Cerca..." oninput="filterSearch(this.value)">
+        </div>
+      </div>
+      <div class="media-grid" id="media-grid"></div>
+      <div class="empty-state" id="library-empty" style="display:none">
+        <div class="empty-icon">🎬</div>
+        <h2>Nessun titolo</h2>
+        <p>Aggiungi film e serie alla tua libreria</p>
+        <button class="btn btn-primary" onclick="openAdd()">+ Aggiungi il primo</button>
+      </div>
+    </div>
+
+    <!-- ── WATCHLIST ── -->
+    <div class="page" id="page-watchlist">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <h2 style="font-size:1.5rem">📌 Da vedere</h2>
+        <button class="btn btn-primary" onclick="openAdd()">+ Aggiungi</button>
+      </div>
+      <div class="media-grid" id="watchlist-grid"></div>
+      <div class="empty-state" id="watchlist-empty" style="display:none">
+        <div class="empty-icon">📌</div>
+        <h2>Watchlist vuota</h2>
+        <p>Aggiungi titoli che vuoi guardare aprendo il dettaglio e cliccando "Aggiungi a watchlist"</p>
+      </div>
+    </div>
+
+    <!-- ── SAGHE ── -->
+    <div class="page" id="page-saghe">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+        <h2 style="font-size:1.5rem">Saghe</h2>
+        <button class="btn btn-primary" onclick="openAddSaga()">+ Nuova saga</button>
+      </div>
+      <div class="saga-grid" id="saga-grid"></div>
+      <div class="empty-state" id="saga-empty" style="display:none">
+        <div class="empty-icon">🎭</div>
+        <h2>Nessuna saga</h2>
+        <p>Raggruppa film e serie in saghe (es. Spider-Man, Harry Potter, MCU…)</p>
+        <button class="btn btn-primary" onclick="openAddSaga()">+ Crea la prima</button>
+      </div>
+    </div>
+
+    <!-- ── DETTAGLIO TITOLO ── -->
+    <div class="page" id="page-detail">
+      <button class="detail-back" onclick="closeDetail()">← Torna indietro</button>
+      <div id="detail-content"></div>
+    </div>
+
+    <!-- ── DETTAGLIO SAGA ── -->
+    <div class="page" id="page-saga-detail">
+      <button class="detail-back" onclick="closeSagaDetail()">← Torna alle saghe</button>
+      <div id="saga-detail-content"></div>
+    </div>
+
+  </main>
+</div><!-- /#app -->
+
+
+<!-- ══════════════════════════════════════════════
+     MODALS
+══════════════════════════════════════════════ -->
+
+<!-- ── AGGIUNGI / MODIFICA TITOLO ── -->
+<div class="overlay" id="modal-add">
+  <div class="modal">
+    <button class="close-btn" onclick="closeModal('modal-add')">✕</button>
+    <h2 class="modal-title" id="add-modal-title">Aggiungi titolo</h2>
+
+    <!-- TMDB search -->
+    <div class="form-group">
+      <label class="form-label">Cerca su TMDB</label>
+      <input class="form-input" id="tmdb-search" placeholder="Titolo del film o serie…" oninput="tmdbSearch(this.value)" autocomplete="off">
+      <div id="tmdb-results" class="tmdb-results"></div>
+    </div>
+
+    <div class="divider">oppure inserimento manuale</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Titolo *</label>
+        <input class="form-input" id="f-title" placeholder="Es. Inception">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo *</label>
+        <select class="form-select" id="f-type" onchange="toggleSeriesFields()">
+          <option value="movie">Film</option>
+          <option value="series">Serie TV</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Anno</label>
+        <input class="form-input" id="f-year" type="number" placeholder="2024">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Genere</label>
+        <input class="form-input" id="f-genre" placeholder="Es. Thriller">
+      </div>
+    </div>
+
+    <div class="form-group" id="f-seasons-wrap" style="display:none">
+      <label class="form-label">Numero stagioni iniziali</label>
+      <input class="form-input" id="f-seasons" type="number" min="1" placeholder="1">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Sinossi</label>
+      <textarea class="form-textarea" id="f-synopsis" placeholder="Breve descrizione…"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">URL poster</label>
+      <input class="form-input" id="f-poster" placeholder="https://…">
+      <p class="form-hint">Lascia vuoto per usare un'icona di default. TMDB compila questo campo automaticamente.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Valutazione</label>
+      <div id="add-rating-wrap"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Saga (opzionale)</label>
+      <select class="form-select" id="f-saga">
+        <option value="">— Nessuna saga —</option>
+      </select>
+    </div>
+
+    <div class="form-group" style="display:flex;align-items:center;gap:.75rem">
+      <input type="checkbox" id="f-watchlist" style="width:16px;height:16px;accent-color:var(--accent)">
+      <label for="f-watchlist" style="font-size:.9rem;color:var(--text2);cursor:pointer">📌 Aggiungi alla watchlist (da vedere)</label>
+    </div>
+
+    <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.5rem">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveMediaForm()">Salva</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── SAGA ── -->
+<div class="overlay" id="modal-saga">
+  <div class="modal modal-sm">
+    <button class="close-btn" onclick="closeModal('modal-saga')">✕</button>
+    <h2 class="modal-title" id="saga-modal-title">Nuova saga</h2>
+    <div class="form-group">
+      <label class="form-label">Nome *</label>
+      <input class="form-input" id="saga-name" placeholder="Es. Spider-Man, Marvel, Harry Potter…">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrizione (opzionale)</label>
+      <textarea class="form-textarea" id="saga-desc" placeholder="Breve descrizione…"></textarea>
+    </div>
+    <div style="display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.5rem">
+      <button class="btn btn-ghost" onclick="closeModal('modal-saga')">Annulla</button>
+      <button class="btn btn-primary" id="saga-save-btn" onclick="saveSagaForm()">Crea</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── IMPOSTAZIONI ── -->
+<div class="overlay" id="modal-settings">
+  <div class="modal" style="max-width:500px">
+    <button class="close-btn" onclick="closeModal('modal-settings')">✕</button>
+    <h2 class="modal-title">Impostazioni</h2>
+
+    <!-- API TMDB -->
+    <div class="settings-section">
+      <h3>API TMDB</h3>
+      <div class="form-group">
+        <label class="form-label">Chiave API</label>
+        <div class="input-group">
+          <input class="form-input" id="settings-tmdb" placeholder="API Key v3  oppure  eyJ… (token v4)"
+                 oninput="updateApiStatus(this.value)">
+          <button class="btn btn-ghost btn-sm" onclick="testApiKey()">Test</button>
+        </div>
+        <p class="form-hint">Ottieni la tua chiave su <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a></p>
+        <div id="api-status-box"></div>
+      </div>
+    </div>
+
+    <hr class="settings-hr">
+
+    <!-- VALUTAZIONE -->
+    <div class="settings-section">
+      <h3>Valutazione</h3>
+      <div class="form-group">
+        <label class="form-label">Modalità</label>
+        <select class="form-select" id="settings-rating">
+          <option value="stars">★ Stelle (½ – 5, equivalente a 1–10)</option>
+          <option value="numeric">Numerico (0–10)</option>
+          <option value="both">Entrambi — sincronizzati</option>
+        </select>
+        <p class="form-hint">In modalità "Entrambi" stelle e voto sono sempre sincronizzati: ½★ = 1, 1★ = 2, … 5★ = 10.</p>
+      </div>
+    </div>
+
+    <hr class="settings-hr">
+
+    <!-- BACKUP -->
+    <div class="settings-section">
+      <h3>Backup su GitHub Gist</h3>
+      <div class="form-group">
+        <label class="form-label">Token GitHub</label>
+        <input class="form-input" id="settings-gh-token" placeholder="ghp_…" type="password">
+        <p class="form-hint">Genera un token su <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a> con permesso <b>gist</b>.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Gist ID (lascia vuoto per crearne uno nuovo)</label>
+        <input class="form-input" id="settings-gist-id" placeholder="es. a1b2c3d4e5f6…">
+      </div>
+      <div class="gist-section">
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-success btn-sm" onclick="gistBackup()">☁ Backup su Gist</button>
+          <button class="btn btn-ghost btn-sm" onclick="gistRestore()">⬇ Ripristina da Gist</button>
+        </div>
+        <div class="gist-log" id="gist-log"></div>
+      </div>
+    </div>
+
+    <hr class="settings-hr">
+
+    <!-- JSON locale -->
+    <div class="settings-section">
+      <h3>Import / Export JSON locale</h3>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="exportJSON()">📤 Esporta JSON</button>
+        <button class="btn btn-ghost btn-sm" onclick="importJSON()">📥 Importa JSON</button>
+      </div>
+    </div>
+
+    <hr class="settings-hr">
+
+    <div style="display:flex;gap:.75rem;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('modal-settings')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Salva impostazioni</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── TOAST CONTAINER ── -->
+<div id="toast-container"></div>
+
+<!-- ── IMPORT INPUT ── -->
+<input type="file" id="import-input" accept=".json" style="display:none" onchange="handleImport(this)">
+
+<!-- ══════════════════════════════════════════════
+     SCRIPTS
+     config.js caricato prima di app.js:
+     se non esiste, app.js usa CFG vuoto come fallback.
+══════════════════════════════════════════════ -->
+<script>
+  // Fallback: se config.js non è presente, CFG rimane vuoto
+  window.CINELOG_CONFIG = window.CINELOG_CONFIG || { TMDB_KEY: '', GITHUB_TOKEN: '', GIST_ID: '' };
+</script>
+<script src="config.js" onerror="console.info('config.js non trovato — usa le impostazioni in-app.')"></script>
+<script src="app.js"></script>
+<script>init();</script>
+
+</body>
+</html>

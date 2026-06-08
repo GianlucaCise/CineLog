@@ -1,0 +1,10 @@
+// Ignore the config file that contains sensitive information
+config.js
+
+// Ignore the .vscode directory
+.vscode/
+
+
+
+
+
