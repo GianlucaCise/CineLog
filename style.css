@@ -578,3 +578,24 @@ hr.settings-hr { border: none; border-top: 1px solid var(--bg4); margin: 1.5rem 
   .form-row { grid-template-columns: 1fr; }
   .header-actions .btn span { display: none; }
 }
+
+/* ── HEADER API PILL ── */
+.header-api-pill {
+  font-size: .75rem;
+  padding: .3rem .75rem;
+  border-radius: 50px;
+  border: 1px solid var(--bg4);
+  cursor: pointer;
+  transition: var(--trans);
+  white-space: nowrap;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+}
+.header-api-pill:hover { opacity: .8; }
+.header-api-pill.no-key   { color: var(--text3); border-color: var(--bg4); }
+.header-api-pill.has-key  { color: var(--blue);  border-color: #2a3a5a; background: #0d1520; }
+.header-api-pill.ok       { color: var(--green); border-color: #2a5a3a; background: #0d1f14; }
+.header-api-pill.error    { color: var(--red);   border-color: #5a2a2a; background: #1f0d0d; }
+.header-api-pill.testing  { color: var(--text3); border-color: var(--bg4); animation: pulse 1s infinite; }
+
+@media (max-width: 700px) { .header-api-pill { display: none; } }

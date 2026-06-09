@@ -376,7 +376,7 @@ function tmdbSearch(q) {
   }, 380);
 }
 
-function fillFromTmdb(data) {
+async function fillFromTmdb(data) {
   document.getElementById('f-title').value    = data.title;
   document.getElementById('f-year').value     = data.year;
   document.getElementById('f-type').value     = data.mediaType === 'tv' ? 'series' : 'movie';
@@ -385,6 +385,48 @@ function fillFromTmdb(data) {
   toggleSeriesFields();
   document.getElementById('tmdb-results').style.display = 'none';
   document.getElementById('tmdb-search').value = data.title;
+
+  // For TV series: fetch full details to get seasons + episodes
+  if (data.mediaType === 'tv') {
+    const seasonsWrap = document.getElementById('f-seasons-wrap');
+    const seasonsInput = document.getElementById('f-seasons');
+    seasonsInput.value = '';
+    seasonsInput.placeholder = 'Caricamento...';
+    seasonsInput.disabled = true;
+
+    try {
+      const url = tmdbBuildUrl(`/tv/${data.id}`, 'language=it-IT&append_to_response=season/1');
+      const r   = await fetch(url, tmdbFetchOpts());
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const tv  = await r.json();
+
+      // Filter out specials (season 0) unless it's the only one
+      const seasons = (tv.seasons || []).filter(s => s.season_number > 0);
+      const numSeasons = seasons.length || tv.number_of_seasons || 1;
+      seasonsInput.value = numSeasons;
+      seasonsInput.placeholder = '1';
+
+      // Store detailed season data on the form for saveMediaForm to use
+      // Each season gets episode count from TMDB
+      const seasonData = seasons.map(s => ({
+        num: s.season_number,
+        episodeCount: s.episode_count,
+        airDate: s.air_date,
+        name: s.name,
+      }));
+      document.getElementById('f-seasons-wrap').dataset.tmdbSeasons = JSON.stringify(seasonData);
+
+      toast(`Serie trovata: ${numSeasons} stagion${numSeasons === 1 ? 'e' : 'i'}, ${tv.number_of_episodes || '?'} episodi totali`, 'success');
+    } catch (e) {
+      seasonsInput.placeholder = '1';
+      toast('Dettagli serie non disponibili, inserisci le stagioni manualmente', 'info');
+    } finally {
+      seasonsInput.disabled = false;
+    }
+  } else {
+    // Clear any leftover season data
+    document.getElementById('f-seasons-wrap').dataset.tmdbSeasons = '';
+  }
 }
 
 // ─── GITHUB GIST BACKUP ────────────────────────────────────
@@ -907,12 +949,25 @@ async function saveMediaForm() {
     await saveMedia(m);
   } else {
     const numSeasons = parseInt(document.getElementById('f-seasons').value) || 1;
+    let seasons = undefined;
+    if (type === 'series') {
+      const rawTmdb = document.getElementById('f-seasons-wrap').dataset.tmdbSeasons;
+      const tmdbSeasons = rawTmdb ? JSON.parse(rawTmdb) : null;
+      if (tmdbSeasons && tmdbSeasons.length) {
+        seasons = tmdbSeasons.map(s => ({
+          num: s.num, rating: null,
+          episodes: Array.from({ length: s.episodeCount || 0 }, (_, ei) => ({ num: ei+1, title: '', rating: null })),
+        }));
+      } else {
+        seasons = Array.from({ length: numSeasons }, (_, i) => ({ num: i+1, rating: null, episodes: [] }));
+      }
+    }
     const m = {
       id: Date.now().toString() + Math.random().toString(36).slice(2,6),
       title, type,
       year: year ? parseInt(year) : null,
       genre, synopsis, poster, rating, sagaId, watchlist,
-      seasons: type === 'series' ? Array.from({ length: numSeasons }, (_, i) => ({ num: i + 1, rating: null, episodes: [] })) : undefined,
+      seasons,
     };
     await saveMedia(m);
   }
@@ -1050,12 +1105,50 @@ async function saveSettings() {
 }
 
 function updateApiStatus(key) {
+  // Status box inside settings modal
   const box = document.getElementById('api-status-box');
-  if (!box) return;
-  if (!key) { box.innerHTML = ''; return; }
+  if (box) {
+    if (!key) { box.innerHTML = ''; }
+    else {
+      const isV4 = tmdbIsV4(key);
+      box.className = 'api-status ' + (isV4 ? 'v4' : 'v3');
+      box.innerHTML = '<span class="api-dot blue"></span> Modalità: <b>' + (isV4 ? 'Read Access Token v4' : 'API Key v3') + '</b>';
+    }
+  }
+  updateHeaderApiPill(key);
+}
+
+function updateHeaderApiPill(key) {
+  const pill = document.getElementById('header-api-pill');
+  if (!pill) return;
+  if (!key) {
+    pill.textContent = 'TMDB: nessuna chiave';
+    pill.className = 'header-api-pill no-key';
+    return;
+  }
   const isV4 = tmdbIsV4(key);
-  box.className = `api-status ${isV4 ? 'v4' : 'v3'}`;
-  box.innerHTML = `<span class="api-dot blue"></span> Modalità: <b>${isV4 ? 'Read Access Token v4' : 'API Key v3'}</b>`;
+  const source = (CFG.TMDB_KEY && key === CFG.TMDB_KEY) ? ' · config.js' : ' · impostazioni';
+  pill.textContent = 'TMDB ' + (isV4 ? 'v4' : 'v3') + source;
+  pill.className = 'header-api-pill has-key';
+}
+
+async function autoTestApiKey() {
+  const pill = document.getElementById('header-api-pill');
+  if (!tmdbKey || !pill) return;
+  pill.textContent = 'TMDB: verifica...';
+  pill.className = 'header-api-pill testing';
+  const { ok, isV4, networkError } = await tmdbTest(tmdbKey);
+  const source = (CFG.TMDB_KEY && tmdbKey === CFG.TMDB_KEY) ? ' · config.js' : ' · impostazioni';
+  if (networkError) {
+    pill.textContent = 'TMDB: errore rete';
+    pill.className = 'header-api-pill error';
+  } else if (ok) {
+    pill.textContent = 'TMDB ' + (isV4 ? 'v4' : 'v3') + ' ✓' + source;
+    pill.className = 'header-api-pill ok';
+  } else {
+    pill.textContent = 'TMDB: chiave non valida';
+    pill.className = 'header-api-pill error';
+  }
 }
 
 async function testApiKey() {
@@ -1103,11 +1196,14 @@ async function init() {
   if (!gistId  && CFG.GIST_ID)      gistId  = CFG.GIST_ID;
 
   if (savedMode) {
-    // Already set up: go straight to app
     startApp();
   } else {
     document.getElementById('setup-overlay').style.display = 'flex';
   }
+
+  // Show TMDB key status in header and auto-test
+  updateHeaderApiPill(tmdbKey);
+  if (tmdbKey) autoTestApiKey();
 
   // Overlay close on backdrop click
   document.querySelectorAll('.overlay').forEach(ov => {
