@@ -1,3 +1,12 @@
+// Ignore the config file that may contain sensitive information
 config.js
 
-.vscode/*
+// Ignore the node_modules directory
+node_modules/
+
+// Ignore the .vscode directory that may contain user-specific settings
+.vscode/
+
+// Ignore log files
+logs/
+*.log
