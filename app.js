@@ -1085,21 +1085,32 @@ async function openSettings() {
   document.getElementById('settings-gist-id').value   = gistId  || await getSetting('gistId') || '';
   document.getElementById('settings-rating').value    = ratingMode;
   document.getElementById('gist-log').textContent     = '';
+  document.getElementById('config-preview').style.display = 'none';
   updateApiStatus(tmdbKey);
+  syncThemeUI();
+  syncGistToggle();
   openModal('modal-settings');
 }
 
 async function saveSettings() {
   const newKey     = document.getElementById('settings-tmdb').value.trim();
-  const newGhToken = document.getElementById('settings-gh-token').value.trim();
-  const newGistId  = document.getElementById('settings-gist-id').value.trim();
+  const newGhToken = document.getElementById('settings-gh-token')?.value.trim() || '';
+  const newGistId  = document.getElementById('settings-gist-id')?.value.trim()  || '';
   const newMode    = document.getElementById('settings-rating').value;
+  const newTheme   = document.documentElement.getAttribute('data-theme')  || 'dark';
+  const newAccent  = document.documentElement.getAttribute('data-accent') || 'gold';
 
-  if (newKey !== tmdbKey) { tmdbKey = newKey; await setSetting('tmdbKey', tmdbKey); }
-  if (newGhToken !== ghToken) { ghToken = newGhToken; await setSetting('ghToken', ghToken); }
-  if (newGistId !== gistId)  { gistId  = newGistId;  await setSetting('gistId',  gistId);  }
-  if (newMode !== ratingMode) { ratingMode = newMode; await setSetting('ratingMode', ratingMode); renderAll(); }
+  if (newKey     !== tmdbKey)    { tmdbKey    = newKey;     await setSetting('tmdbKey',    tmdbKey);    }
+  if (newGhToken !== ghToken)    { ghToken    = newGhToken; await setSetting('ghToken',    ghToken);    }
+  if (newGistId  !== gistId)     { gistId     = newGistId;  await setSetting('gistId',     gistId);     }
+  if (newMode    !== ratingMode) { ratingMode  = newMode;   await setSetting('ratingMode', ratingMode); renderAll(); }
+  if (newTheme   !== currentTheme || newAccent !== currentAccent) {
+    applyTheme(newTheme, newAccent);
+    await setSetting('theme',  newTheme);
+    await setSetting('accent', newAccent);
+  }
 
+  updateHeaderApiPill(tmdbKey);
   closeModal('modal-settings');
   toast('Impostazioni salvate', 'success');
 }
@@ -1184,6 +1195,8 @@ async function init() {
   const savedTmdb    = await getSetting('tmdbKey');
   const savedGhToken = await getSetting('ghToken');
   const savedGistId  = await getSetting('gistId');
+  const savedTheme   = await getSetting('theme');
+  const savedAccent  = await getSetting('accent');
 
   if (savedMode)    ratingMode = savedMode;
   if (savedTmdb)    tmdbKey    = savedTmdb;
@@ -1191,9 +1204,15 @@ async function init() {
   if (savedGistId)  gistId     = savedGistId;
 
   // Config.js values act as defaults if DB has nothing
-  if (!tmdbKey && CFG.TMDB_KEY)     tmdbKey = CFG.TMDB_KEY;
-  if (!ghToken && CFG.GITHUB_TOKEN) ghToken = CFG.GITHUB_TOKEN;
-  if (!gistId  && CFG.GIST_ID)      gistId  = CFG.GIST_ID;
+  if (!tmdbKey    && CFG.TMDB_KEY)      tmdbKey     = CFG.TMDB_KEY;
+  if (!ghToken    && CFG.GITHUB_TOKEN)  ghToken     = CFG.GITHUB_TOKEN;
+  if (!gistId     && CFG.GIST_ID)       gistId      = CFG.GIST_ID;
+  if (!ratingMode && CFG.RATING_MODE)   ratingMode  = CFG.RATING_MODE;
+
+  // Apply theme: DB > config.js > default dark/gold
+  const theme  = savedTheme  || CFG.THEME  || 'dark';
+  const accent = savedAccent || CFG.ACCENT || 'gold';
+  applyTheme(theme, accent);
 
   if (savedMode) {
     startApp();
@@ -1229,4 +1248,133 @@ function startApp() {
   document.getElementById('app').classList.add('visible');
   renderAll();
   showPage('library');
+}
+
+// ─── THEME & ACCENT ────────────────────────────────────────
+let currentTheme  = 'dark';
+let currentAccent = 'gold';
+
+function applyTheme(theme, accent) {
+  document.documentElement.setAttribute('data-theme',  theme);
+  document.documentElement.setAttribute('data-accent', accent);
+  currentTheme  = theme;
+  currentAccent = accent;
+}
+
+function previewTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  // Update active button
+  document.querySelectorAll('.theme-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.themeVal === theme));
+}
+
+function previewAccent(accent) {
+  document.documentElement.setAttribute('data-accent', accent);
+  document.querySelectorAll('.accent-dot').forEach(d =>
+    d.classList.toggle('active', d.dataset.accentVal === accent));
+}
+
+function syncThemeUI() {
+  document.querySelectorAll('.theme-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.themeVal === currentTheme));
+  document.querySelectorAll('.accent-dot').forEach(d =>
+    d.classList.toggle('active', d.dataset.accentVal === currentAccent));
+}
+
+// ─── GIST TOGGLE ───────────────────────────────────────────
+function toggleGistFields(enabled) {
+  document.getElementById('backup-fields').classList.toggle('hidden', !enabled);
+}
+
+function syncGistToggle() {
+  const hasToken = !!(ghToken);
+  const toggle = document.getElementById('gist-toggle');
+  if (toggle) {
+    toggle.checked = hasToken;
+    toggleGistFields(hasToken);
+  }
+}
+
+// ─── CONFIG.JS DOWNLOAD ────────────────────────────────────
+function buildConfigJs() {
+  const tmdb  = document.getElementById('settings-tmdb')?.value.trim()    || tmdbKey  || '';
+  const gh    = document.getElementById('settings-gh-token')?.value.trim() || ghToken  || '';
+  const gist  = document.getElementById('settings-gist-id')?.value.trim()  || gistId   || '';
+  const theme  = currentTheme;
+  const accent = currentAccent;
+  const rating = document.getElementById('settings-rating')?.value || ratingMode;
+
+  return `// ─────────────────────────────────────────────────────────
+//  CineLog — Configurazione
+//  Generato automaticamente il ${new Date().toLocaleString('it-IT')}
+//  ⚠️  Non pubblicare questo file (è già nel .gitignore)
+// ─────────────────────────────────────────────────────────
+
+const CINELOG_CONFIG = {
+  // Chiave API TMDB (v3 corta) oppure Read Access Token (v4, eyJ...)
+  TMDB_KEY: '${tmdb}',
+
+  // Token GitHub per il backup su Gist (permesso: gist)
+  GITHUB_TOKEN: '${gh}',
+
+  // ID del Gist esistente (lascia vuoto per crearne uno nuovo)
+  GIST_ID: '${gist}',
+
+  // Tema UI: 'dark' | 'light' | 'system'
+  THEME: '${theme}',
+
+  // Colore accent: 'gold' | 'blue' | 'green' | 'red' | 'purple' | 'pink'
+  ACCENT: '${accent}',
+
+  // Modalità valutazione: 'stars' | 'numeric' | 'both'
+  RATING_MODE: '${rating}',
+};
+`;
+}
+
+function downloadConfigJs() {
+  const content = buildConfigJs();
+
+  // Show preview
+  const preview = document.getElementById('config-preview');
+  if (preview) { preview.textContent = content; preview.style.display = 'block'; }
+
+  // Download
+  const blob = new Blob([content], { type: 'text/javascript' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'config.js';
+  a.click();
+  toast('config.js scaricato — sostituisci il file nella cartella del progetto', 'success', 5000);
+}
+
+// ─── CLEAR ALL DATA ────────────────────────────────────────
+async function clearAllData() {
+  const confirmed = confirm(
+    'Sei sicuro di voler eliminare TUTTI i dati?\n\n' +
+    '• Film e serie\n• Saghe\n• Valutazioni\n• Impostazioni\n\n' +
+    'Questa operazione è IRREVERSIBILE.'
+  );
+  if (!confirmed) return;
+
+  // Second confirmation
+  const typed = prompt('Scrivi ELIMINA per confermare:');
+  if (typed !== 'ELIMINA') { toast('Operazione annullata', 'info'); return; }
+
+  try {
+    const stores = ['media', 'sagas', 'settings'];
+    for (const store of stores) {
+      const tx  = db.transaction(store, 'readwrite');
+      tx.objectStore(store).clear();
+      await new Promise(r => tx.oncomplete = r);
+    }
+    mediaList = []; sagaList = [];
+    ratingMode = 'both'; tmdbKey = ''; ghToken = ''; gistId = '';
+    applyTheme('dark', 'gold');
+    closeModal('modal-settings');
+    renderAll();
+    toast('Tutti i dati eliminati', 'info');
+  } catch (e) {
+    toast('Errore durante l\'eliminazione: ' + e.message, 'error');
+  }
 }
