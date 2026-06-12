@@ -766,3 +766,21 @@ hr.settings-hr { border: none; border-top: 1px solid var(--bg4); margin: 1.5rem 
   overflow-y: auto;
   margin-top: .5rem;
 }
+
+/* ── BACKEND PILL ── */
+.backend-pill {
+  font-size: .75rem;
+  padding: .3rem .75rem;
+  border-radius: 50px;
+  border: 1px solid var(--bg4);
+  cursor: pointer;
+  transition: var(--trans);
+  white-space: nowrap;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+}
+.backend-pill.online  { color: var(--green); border-color: #2a5a3a; background: #0d1f14; }
+.backend-pill.offline { color: var(--text3); border-color: var(--bg4); }
+.backend-pill:hover { opacity: .8; }
+
+@media (max-width: 700px) { .backend-pill { display: none; } }

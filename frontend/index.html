@@ -61,6 +61,7 @@
       <button class="nav-btn" onclick="showPage('saghe')">Saghe</button>
     </nav>
 
+    <div id="backend-indicator" class="backend-pill offline" onclick="testBackendConnection()" title="Stato server backend">○ Offline</div>
     <div id="header-api-pill" class="header-api-pill no-key" onclick="openSettings()" title="Stato chiave TMDB — clicca per le impostazioni">TMDB: nessuna chiave</div>
     <div class="header-actions">
       <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ <span>Impostazioni</span></button>
@@ -260,6 +261,21 @@
         </div>
         <p class="form-hint">Ottieni la tua chiave su <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a></p>
         <div id="api-status-box"></div>
+      </div>
+    </div>
+
+    <hr class="settings-hr">
+
+    <!-- BACKEND -->
+    <div class="settings-section">
+      <h3>Server backend (SQLite)</h3>
+      <div class="form-group">
+        <div id="backend-status-box" class="api-status" style="margin-bottom:.75rem"></div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" id="test-backend-btn" onclick="testBackendConnection()">Testa connessione</button>
+          <button class="btn btn-ghost btn-sm" onclick="migrateToBackend()">📦 Migra dati locali → SQLite</button>
+        </div>
+        <p class="form-hint">Se il server è spento, l'app usa IndexedDB come fallback automatico.</p>
       </div>
     </div>
 

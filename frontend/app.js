@@ -7,6 +7,85 @@
 // ─── CONFIG (from config.js if available) ──────────────────
 const CFG = (typeof CINELOG_CONFIG !== 'undefined') ? CINELOG_CONFIG : { TMDB_KEY: '', GITHUB_TOKEN: '', GIST_ID: '' };
 
+// ─── API LAYER ─────────────────────────────────────────────
+const API_BASE = 'http://localhost:8000/api';
+let backendOnline = false;
+
+async function checkBackend() {
+  try {
+    const r = await fetch(API_BASE + '/status', { signal: AbortSignal.timeout(2000) });
+    backendOnline = r.ok;
+  } catch { backendOnline = false; }
+  updateBackendIndicator();
+  return backendOnline;
+}
+
+function updateBackendIndicator() {
+  const el = document.getElementById('backend-indicator');
+  if (!el) return;
+  if (backendOnline) {
+    el.textContent = '● Server';
+    el.className = 'backend-pill online';
+    el.title = 'Backend SQLite connesso';
+  } else {
+    el.textContent = '○ Offline';
+    el.className = 'backend-pill offline';
+    el.title = 'Backend non raggiungibile — uso IndexedDB locale';
+  }
+}
+
+async function testBackendConnection() {
+  const btn = document.getElementById('test-backend-btn');
+  const box = document.getElementById('backend-status-box');
+  if (btn) btn.textContent = 'Test…';
+  try {
+    const r   = await fetch(API_BASE + '/status', { signal: AbortSignal.timeout(3000) });
+    const data = await r.json();
+    backendOnline = r.ok;
+    if (box) {
+      box.className = 'api-status ok';
+      box.innerHTML = '<span class="api-dot green"></span> Connesso — DB: ' +
+        data.db_size_kb + ' KB · ' + (data.db_exists ? 'cinelog.db presente' : 'nuovo DB');
+    }
+  } catch (e) {
+    backendOnline = false;
+    if (box) {
+      box.className = 'api-status error';
+      box.innerHTML = '<span class="api-dot red"></span> Non raggiungibile — uso IndexedDB locale';
+    }
+  }
+  if (btn) btn.textContent = 'Testa connessione';
+  updateBackendIndicator();
+}
+
+// API helpers — usano il backend se online, altrimenti IndexedDB
+async function apiGet(path) {
+  const r = await fetch(API_BASE + path, { signal: AbortSignal.timeout(5000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function apiPost(path, body) {
+  const r = await fetch(API_BASE + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(5000),
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function apiPut(path, body) {
+  const r = await fetch(API_BASE + path, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(5000),
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function apiDelete(path) {
+  const r = await fetch(API_BASE + path, { method: 'DELETE', signal: AbortSignal.timeout(5000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
 // ─── STATE ─────────────────────────────────────────────────
 let ratingMode = 'both';    // 'stars' | 'numeric' | 'both'
 let tmdbKey    = CFG.TMDB_KEY    || '';
@@ -91,28 +170,82 @@ let mediaList = [];
 let sagaList  = [];
 
 async function loadAll() {
+  if (backendOnline) {
+    try {
+      // Normalize saga_id -> sagaId for frontend compatibility
+      const rawMedia = await apiGet('/media');
+      mediaList = rawMedia.map(m => ({ ...m, sagaId: m.saga_id ?? m.sagaId }));
+      sagaList  = await apiGet('/sagas');
+      // Sync to IndexedDB as local cache
+      for (const m of mediaList) await dbPut('media', m);
+      for (const s of sagaList)  await dbPut('sagas', s);
+      return;
+    } catch (e) {
+      console.warn('Backend load failed, falling back to IndexedDB', e);
+      backendOnline = false; updateBackendIndicator();
+    }
+  }
   mediaList = await dbGetAll('media');
   sagaList  = await dbGetAll('sagas');
 }
 
 async function saveMedia(item) {
+  // Normalize for API (sagaId -> saga_id)
+  const apiItem = { ...item, saga_id: item.sagaId ?? item.saga_id };
+  if (backendOnline) {
+    try {
+      const existing = mediaList.find(m => m.id === item.id);
+      const saved = existing
+        ? await apiPut('/media/' + item.id, apiItem)
+        : await apiPost('/media', apiItem);
+      const normalized = { ...saved, sagaId: saved.saga_id ?? saved.sagaId };
+      await dbPut('media', normalized);
+      const idx = mediaList.findIndex(m => m.id === normalized.id);
+      if (idx >= 0) mediaList[idx] = normalized; else mediaList.push(normalized);
+      return;
+    } catch (e) {
+      console.warn('Backend save failed, falling back to IndexedDB', e);
+      backendOnline = false; updateBackendIndicator();
+    }
+  }
   await dbPut('media', item);
   const idx = mediaList.findIndex(m => m.id === item.id);
   if (idx >= 0) mediaList[idx] = item; else mediaList.push(item);
 }
 
 async function deleteMedia(id) {
+  if (backendOnline) {
+    try { await apiDelete('/media/' + id); } catch (e) { console.warn(e); }
+  }
   await dbDelete('media', id);
   mediaList = mediaList.filter(m => m.id !== id);
 }
 
 async function saveSaga(item) {
+  if (backendOnline) {
+    try {
+      const existing = sagaList.find(s => s.id === item.id);
+      const saved = existing
+        ? await apiPut('/sagas/' + item.id, item)
+        : await apiPost('/sagas', item);
+      await dbPut('sagas', saved);
+      const idx = sagaList.findIndex(s => s.id === saved.id);
+      if (idx >= 0) sagaList[idx] = saved; else sagaList.push(saved);
+      return;
+    } catch (e) {
+      console.warn('Backend save failed, falling back to IndexedDB', e);
+      backendOnline = false; updateBackendIndicator();
+    }
+  }
   await dbPut('sagas', item);
   const idx = sagaList.findIndex(s => s.id === item.id);
   if (idx >= 0) sagaList[idx] = item; else sagaList.push(item);
 }
 
 async function deleteSaga(id) {
+  if (backendOnline) {
+    try { await apiDelete('/sagas/' + id); } catch (e) { console.warn(e); }
+  }
   await dbDelete('sagas', id);
   sagaList = sagaList.filter(s => s.id !== id);
 }
@@ -1100,14 +1233,26 @@ async function saveSettings() {
   const newTheme   = document.documentElement.getAttribute('data-theme')  || 'dark';
   const newAccent  = document.documentElement.getAttribute('data-accent') || 'gold';
 
-  if (newKey     !== tmdbKey)    { tmdbKey    = newKey;     await setSetting('tmdbKey',    tmdbKey);    }
-  if (newGhToken !== ghToken)    { ghToken    = newGhToken; await setSetting('ghToken',    ghToken);    }
-  if (newGistId  !== gistId)     { gistId     = newGistId;  await setSetting('gistId',     gistId);     }
-  if (newMode    !== ratingMode) { ratingMode  = newMode;   await setSetting('ratingMode', ratingMode); renderAll(); }
+  const settingsToSave = {};
+  if (newKey     !== tmdbKey)    { tmdbKey    = newKey;     await setSetting('tmdbKey',    tmdbKey);    settingsToSave.tmdbKey    = tmdbKey;    }
+  if (newGhToken !== ghToken)    { ghToken    = newGhToken; await setSetting('ghToken',    ghToken);    settingsToSave.ghToken    = ghToken;    }
+  if (newGistId  !== gistId)     { gistId     = newGistId;  await setSetting('gistId',     gistId);     settingsToSave.gistId     = gistId;     }
+  if (newMode    !== ratingMode) { ratingMode  = newMode;   await setSetting('ratingMode', ratingMode); settingsToSave.ratingMode = ratingMode; renderAll(); }
   if (newTheme   !== currentTheme || newAccent !== currentAccent) {
     applyTheme(newTheme, newAccent);
     await setSetting('theme',  newTheme);
     await setSetting('accent', newAccent);
+    settingsToSave.theme  = newTheme;
+    settingsToSave.accent = newAccent;
+  }
+
+  // Sync settings to backend if online
+  if (backendOnline) {
+    try {
+      for (const [k, v] of Object.entries(settingsToSave)) {
+        await apiPut('/settings/' + k, { value: v });
+      }
+    } catch(e) { console.warn('Settings sync to backend failed', e); }
   }
 
   updateHeaderApiPill(tmdbKey);
@@ -1188,31 +1333,48 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 // ─── INIT ──────────────────────────────────────────────────
 async function init() {
   await openDB();
-  await loadAll();
 
-  // Load persisted settings (DB overrides config.js if user set them manually)
-  const savedMode    = await getSetting('ratingMode');
-  const savedTmdb    = await getSetting('tmdbKey');
-  const savedGhToken = await getSetting('ghToken');
-  const savedGistId  = await getSetting('gistId');
-  const savedTheme   = await getSetting('theme');
-  const savedAccent  = await getSetting('accent');
+  // Check backend first
+  await checkBackend();
+
+  // Load settings — backend first, then IndexedDB, then config.js
+  let savedMode, savedTmdb, savedGhToken, savedGistId, savedTheme, savedAccent;
+  if (backendOnline) {
+    try {
+      const s    = await apiGet('/settings');
+      savedMode    = s.ratingMode  || null;
+      savedTmdb    = s.tmdbKey     || null;
+      savedGhToken = s.ghToken     || null;
+      savedGistId  = s.gistId      || null;
+      savedTheme   = s.theme       || null;
+      savedAccent  = s.accent      || null;
+      // Mirror to IndexedDB
+      for (const [k,v] of Object.entries(s)) if (v) await setSetting(k, v);
+    } catch(e) { console.warn('Settings from backend failed', e); }
+  }
+  if (!savedMode)    savedMode    = await getSetting('ratingMode');
+  if (!savedTmdb)    savedTmdb    = await getSetting('tmdbKey');
+  if (!savedGhToken) savedGhToken = await getSetting('ghToken');
+  if (!savedGistId)  savedGistId  = await getSetting('gistId');
+  if (!savedTheme)   savedTheme   = await getSetting('theme');
+  if (!savedAccent)  savedAccent  = await getSetting('accent');
 
   if (savedMode)    ratingMode = savedMode;
   if (savedTmdb)    tmdbKey    = savedTmdb;
   if (savedGhToken) ghToken    = savedGhToken;
   if (savedGistId)  gistId     = savedGistId;
 
-  // Config.js values act as defaults if DB has nothing
-  if (!tmdbKey    && CFG.TMDB_KEY)      tmdbKey     = CFG.TMDB_KEY;
-  if (!ghToken    && CFG.GITHUB_TOKEN)  ghToken     = CFG.GITHUB_TOKEN;
-  if (!gistId     && CFG.GIST_ID)       gistId      = CFG.GIST_ID;
-  if (!ratingMode && CFG.RATING_MODE)   ratingMode  = CFG.RATING_MODE;
+  // Config.js as final fallback
+  if (!tmdbKey    && CFG.TMDB_KEY)     tmdbKey    = CFG.TMDB_KEY;
+  if (!ghToken    && CFG.GITHUB_TOKEN) ghToken    = CFG.GITHUB_TOKEN;
+  if (!gistId     && CFG.GIST_ID)      gistId     = CFG.GIST_ID;
+  if (!ratingMode && CFG.RATING_MODE)  ratingMode = CFG.RATING_MODE;
 
-  // Apply theme: DB > config.js > default dark/gold
   const theme  = savedTheme  || CFG.THEME  || 'dark';
   const accent = savedAccent || CFG.ACCENT || 'gold';
   applyTheme(theme, accent);
+
+  await loadAll();
 
   if (savedMode) {
     startApp();
@@ -1220,7 +1382,6 @@ async function init() {
     document.getElementById('setup-overlay').style.display = 'flex';
   }
 
-  // Show TMDB key status in header and auto-test
   updateHeaderApiPill(tmdbKey);
   if (tmdbKey) autoTestApiKey();
 
@@ -1376,5 +1537,25 @@ async function clearAllData() {
     toast('Tutti i dati eliminati', 'info');
   } catch (e) {
     toast('Errore durante l\'eliminazione: ' + e.message, 'error');
+  }
+}
+
+// ─── MIGRATE INDEXEDDB → BACKEND ───────────────────────────
+async function migrateToBackend() {
+  if (!backendOnline) {
+    toast('Backend non raggiungibile', 'error'); return;
+  }
+  const localMedia = await dbGetAll('media');
+  const localSagas = await dbGetAll('sagas');
+  if (!localMedia.length && !localSagas.length) {
+    toast('Nessun dato locale da migrare', 'info'); return;
+  }
+  if (!confirm(`Migrare ${localMedia.length} titoli e ${localSagas.length} saghe da IndexedDB al backend SQLite?`)) return;
+  try {
+    const res = await apiPost('/import', { media: localMedia, sagas: localSagas });
+    toast(`Migrazione completata: ${res.imported.media} titoli, ${res.imported.sagas} saghe`, 'success');
+    await loadAll(); renderAll();
+  } catch(e) {
+    toast('Errore migrazione: ' + e.message, 'error');
   }
 }
