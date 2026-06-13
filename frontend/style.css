@@ -820,3 +820,114 @@ hr.settings-hr { border: none; border-top: 1px solid var(--bg4); margin: 1.5rem 
   font-size: .82rem;
   padding: .4rem .65rem;
 }
+
+/* ════════════════════════════════════════════
+   ANIMAZIONI
+   ════════════════════════════════════════════ */
+
+/* ── Keyframes base ── */
+@keyframes fadeIn        { from { opacity:0; }                          to { opacity:1; } }
+@keyframes fadeInUp      { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeInDown    { from { opacity:0; transform:translateY(-10px);} to { opacity:1; transform:translateY(0); } }
+@keyframes fadeInScale   { from { opacity:0; transform:scale(.95); }    to { opacity:1; transform:scale(1); } }
+@keyframes slideInRight  { from { opacity:0; transform:translateX(20px);}to { opacity:1; transform:translateX(0); } }
+@keyframes shimmer       {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+/* ── Page transitions ── */
+.page { animation: fadeIn .18s ease both; }
+.page.active { animation: fadeInUp .22s ease both; }
+
+/* ── Cards ── */
+.media-card  { animation: fadeInUp .22s ease both; }
+.saga-card   { animation: fadeInUp .22s ease both; }
+
+/* ── Modal ── */
+.overlay      { animation: fadeIn .15s ease both; }
+.modal        { animation: fadeInScale .2s ease both; }
+
+/* ── Detail page ── */
+.detail-hero  { animation: fadeInUp .25s ease both; }
+.seasons-section { animation: fadeInUp .3s ease both; }
+.season-block { animation: fadeInUp .2s ease both; }
+
+/* ── Stats bar ── */
+.stat-pill    { animation: fadeInDown .2s ease both; }
+
+/* ── Season body open/close ── */
+.season-body {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height .28s ease, padding .28s ease;
+  display: block !important; /* override display:none with max-height */
+  padding-bottom: 0;
+}
+.season-body.open {
+  max-height: 2000px;
+  padding-bottom: 1.25rem;
+}
+
+/* ── Nav active indicator ── */
+.nav-btn { position: relative; overflow: hidden; }
+.nav-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 4px; left: 50%;
+  width: 0; height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  transform: translateX(-50%);
+  transition: width .2s ease;
+}
+.nav-btn.active::after { width: 60%; }
+
+/* ── Button press feedback ── */
+.btn:active { transform: scale(.97); }
+
+/* ── Card hover lift (already has transform, enhance) ── */
+.media-card { transition: border-color .18s ease, transform .2s ease, box-shadow .2s ease; }
+
+/* ── Overlay backdrop fade ── */
+.overlay { transition: opacity .15s ease; }
+.overlay:not(.open) { pointer-events: none; }
+
+/* ── Toast slide ── */
+@keyframes toastIn  { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:translateX(0); } }
+@keyframes toastOut { from { opacity:1; transform:translateX(0); }    to { opacity:0; transform:translateX(24px); } }
+.toast { animation: toastIn .2s ease both; }
+
+/* ── Staggered grid children ── */
+.media-grid .media-card:nth-child(1)  { animation-delay: .02s; }
+.media-grid .media-card:nth-child(2)  { animation-delay: .04s; }
+.media-grid .media-card:nth-child(3)  { animation-delay: .06s; }
+.media-grid .media-card:nth-child(4)  { animation-delay: .08s; }
+.media-grid .media-card:nth-child(5)  { animation-delay: .10s; }
+.media-grid .media-card:nth-child(6)  { animation-delay: .12s; }
+.media-grid .media-card:nth-child(7)  { animation-delay: .14s; }
+.media-grid .media-card:nth-child(8)  { animation-delay: .16s; }
+.media-grid .media-card:nth-child(n+9){ animation-delay: .18s; }
+
+.saga-grid .saga-card:nth-child(1)  { animation-delay: .03s; }
+.saga-grid .saga-card:nth-child(2)  { animation-delay: .07s; }
+.saga-grid .saga-card:nth-child(3)  { animation-delay: .11s; }
+.saga-grid .saga-card:nth-child(4)  { animation-delay: .15s; }
+.saga-grid .saga-card:nth-child(n+5){ animation-delay: .18s; }
+
+/* ── Header logo subtle pulse on load ── */
+@keyframes logoPop {
+  0%   { opacity:0; transform: scale(.9) translateY(-4px); }
+  60%  { transform: scale(1.03) translateY(0); }
+  100% { opacity:1; transform: scale(1) translateY(0); }
+}
+.logo { animation: logoPop .4s ease both; }
+
+/* ── Respect prefers-reduced-motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

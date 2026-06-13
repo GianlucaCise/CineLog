@@ -965,7 +965,9 @@ function makeDynModal(title, bodyEl, onSave) {
   btns.append(cancel, save);
   modal.append(close, h, bodyEl, btns);
   ov.appendChild(modal);
-  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  let _mdDown = false;
+  ov.addEventListener('mousedown', e => { _mdDown = e.target === ov; });
+  ov.addEventListener('click', e => { if (e.target === ov && _mdDown) ov.remove(); _mdDown = false; });
   document.body.appendChild(ov);
   return ov;
 }
@@ -1042,6 +1044,15 @@ function openAdd() {
   document.getElementById('add-modal-title').textContent = 'Aggiungi titolo';
   clearAddForm();
   openModal('modal-add');
+}
+
+function openAddWatchlist() {
+  openAdd();
+  // Pre-select watchlist checkbox
+  requestAnimationFrame(() => {
+    const cb = document.getElementById('f-watchlist');
+    if (cb) cb.checked = true;
+  });
 }
 
 function clearAddForm() {
@@ -1447,9 +1458,15 @@ async function init() {
   updateHeaderApiPill(tmdbKey);
   if (tmdbKey) autoTestApiKey();
 
-  // Overlay close on backdrop click
+  // Overlay close on backdrop click — only if mousedown also started on backdrop
+  // (prevents closing when dragging text selection out of modal)
   document.querySelectorAll('.overlay').forEach(ov => {
-    ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+    let mousedownOnBackdrop = false;
+    ov.addEventListener('mousedown', e => { mousedownOnBackdrop = e.target === ov; });
+    ov.addEventListener('click', e => {
+      if (e.target === ov && mousedownOnBackdrop) ov.classList.remove('open');
+      mousedownOnBackdrop = false;
+    });
   });
 }
 
