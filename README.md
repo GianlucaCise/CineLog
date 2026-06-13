@@ -1,4 +1,4 @@
-# 🎬 CineLog "v2"
+# 🎬 CineLog v2
 
 Diario personale di film e serie TV con backend FastAPI + SQLite.
 

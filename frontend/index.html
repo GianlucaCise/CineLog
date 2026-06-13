@@ -253,7 +253,7 @@
     <div class="settings-section">
       <h3>API TMDB</h3>
       <div class="form-group">
-        <label class="form-label">Chiave API</label>
+        <label class="form-label">Chiave API (valore nel DB)</label>
         <div class="input-group">
           <input class="form-input" id="settings-tmdb" placeholder="API Key v3  oppure  eyJ… (token v4)"
                  oninput="updateApiStatus(this.value)">
@@ -261,6 +261,52 @@
         </div>
         <p class="form-hint">Ottieni la tua chiave su <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a></p>
         <div id="api-status-box"></div>
+      </div>
+    </div>
+
+    <hr class="settings-hr">
+
+    <!-- SORGENTE CHIAVI -->
+    <div class="settings-section">
+      <h3>Sorgente chiavi API</h3>
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">
+        Scegli individualmente se ogni chiave deve essere letta dal <b>database</b> (modificabile qui sopra) o da <b>config.js</b> (file sul disco, non modificabile dall'app).
+      </p>
+
+      <!-- TMDB -->
+      <div class="key-source-row">
+        <div class="key-source-info">
+          <span class="key-source-label">TMDB Key</span>
+          <span class="key-source-preview" id="cfg-preview-tmdb"></span>
+        </div>
+        <select class="form-select key-source-select" id="src-tmdb">
+          <option value="db">🗄 Database</option>
+          <option value="config">📄 config.js</option>
+        </select>
+      </div>
+
+      <!-- GitHub Token -->
+      <div class="key-source-row">
+        <div class="key-source-info">
+          <span class="key-source-label">GitHub Token</span>
+          <span class="key-source-preview" id="cfg-preview-ghtoken"></span>
+        </div>
+        <select class="form-select key-source-select" id="src-ghtoken">
+          <option value="db">🗄 Database</option>
+          <option value="config">📄 config.js</option>
+        </select>
+      </div>
+
+      <!-- Gist ID -->
+      <div class="key-source-row">
+        <div class="key-source-info">
+          <span class="key-source-label">Gist ID</span>
+          <span class="key-source-preview" id="cfg-preview-gistid"></span>
+        </div>
+        <select class="form-select key-source-select" id="src-gistid">
+          <option value="db">🗄 Database</option>
+          <option value="config">📄 config.js</option>
+        </select>
       </div>
     </div>
 
@@ -335,12 +381,12 @@
       </div>
       <div class="backup-fields hidden" id="backup-fields">
         <div class="form-group">
-          <label class="form-label">Token GitHub</label>
+          <label class="form-label">Token GitHub <span style="color:var(--text3);font-size:.78rem">(valore nel DB — la sorgente attiva è impostata sopra)</span></label>
           <input class="form-input" id="settings-gh-token" placeholder="ghp_…" type="password">
           <p class="form-hint">Genera un token su <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a> con permesso <b>gist</b>.</p>
         </div>
         <div class="form-group">
-          <label class="form-label">Gist ID <span style="color:var(--text3)">(lascia vuoto per crearne uno nuovo)</span></label>
+          <label class="form-label">Gist ID <span style="color:var(--text3);font-size:.78rem">(valore nel DB)</span></label>
           <input class="form-input" id="settings-gist-id" placeholder="es. a1b2c3d4e5f6…">
         </div>
         <div class="gist-log" id="gist-log"></div>

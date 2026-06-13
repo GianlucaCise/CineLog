@@ -7,6 +7,16 @@
 // ─── CONFIG (from config.js if available) ──────────────────
 const CFG = (typeof CINELOG_CONFIG !== 'undefined') ? CINELOG_CONFIG : { TMDB_KEY: '', GITHUB_TOKEN: '', GIST_ID: '' };
 
+// Key source preferences: 'db' | 'config' per ogni chiave
+// Salvato in DB come keySources: { tmdbKey: 'db', ghToken: 'db', gistId: 'db' }
+let keySources = { tmdbKey: 'db', ghToken: 'db', gistId: 'db' };
+
+function resolveKey(dbValue, cfgValue, sourceKey) {
+  const src = keySources[sourceKey] || 'db';
+  if (src === 'config') return cfgValue || dbValue || '';
+  return dbValue || cfgValue || '';
+}
+
 // ─── API LAYER ─────────────────────────────────────────────
 const API_BASE = 'http://localhost:8000/api';
 let backendOnline = false;
@@ -1213,16 +1223,52 @@ async function confirmDeleteSaga(id) {
 
 // ─── SETTINGS ──────────────────────────────────────────────
 async function openSettings() {
-  document.getElementById('settings-tmdb').value     = tmdbKey || '';
-  document.getElementById('settings-gh-token').value  = ghToken || '';
-  document.getElementById('settings-gist-id').value   = gistId  || await getSetting('gistId') || '';
+  // Show DB value in fields (what's stored in DB, regardless of active source)
+  const dbTmdb    = await getSetting('tmdbKey') || '';
+  const dbGhToken = await getSetting('ghToken')  || '';
+  const dbGistId  = await getSetting('gistId')   || '';
+
+  document.getElementById('settings-tmdb').value      = dbTmdb;
+  document.getElementById('settings-gh-token').value  = dbGhToken;
+  document.getElementById('settings-gist-id').value   = dbGistId;
   document.getElementById('settings-rating').value    = ratingMode;
   document.getElementById('gist-log').textContent     = '';
   document.getElementById('config-preview').style.display = 'none';
+
+  // Populate source selectors
+  const srcTmdb   = document.getElementById('src-tmdb');
+  const srcGh     = document.getElementById('src-ghtoken');
+  const srcGist   = document.getElementById('src-gistid');
+  if (srcTmdb)   srcTmdb.value   = keySources.tmdbKey || 'db';
+  if (srcGh)     srcGh.value     = keySources.ghToken  || 'db';
+  if (srcGist)   srcGist.value   = keySources.gistId   || 'db';
+
+  // Show config.js values if available
+  updateKeySourcePreviews();
+
   updateApiStatus(tmdbKey);
   syncThemeUI();
   syncGistToggle();
   openModal('modal-settings');
+}
+
+function updateKeySourcePreviews() {
+  const keys = [
+    { id: 'cfg-preview-tmdb',    val: CFG.TMDB_KEY,      label: 'TMDB Key' },
+    { id: 'cfg-preview-ghtoken', val: CFG.GITHUB_TOKEN,  label: 'GitHub Token' },
+    { id: 'cfg-preview-gistid',  val: CFG.GIST_ID,       label: 'Gist ID' },
+  ];
+  keys.forEach(({ id, val }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (val) {
+      el.textContent = val.length > 24 ? val.slice(0,12) + '…' + val.slice(-6) : val;
+      el.style.color = 'var(--green)';
+    } else {
+      el.textContent = 'non presente in config.js';
+      el.style.color = 'var(--text3)';
+    }
+  });
 }
 
 async function saveSettings() {
@@ -1233,12 +1279,26 @@ async function saveSettings() {
   const newTheme   = document.documentElement.getAttribute('data-theme')  || 'dark';
   const newAccent  = document.documentElement.getAttribute('data-accent') || 'gold';
 
+  // Read key source toggles
+  const newKeySources = {
+    tmdbKey: document.getElementById('src-tmdb')?.value    || 'db',
+    ghToken: document.getElementById('src-ghtoken')?.value || 'db',
+    gistId:  document.getElementById('src-gistid')?.value  || 'db',
+  };
+  keySources = newKeySources;
+  await setSetting('keySources', keySources);
+
+  // Save DB-sourced keys to DB; config-sourced keys are NOT stored in DB
   const settingsToSave = {};
-  if (newKey     !== tmdbKey)    { tmdbKey    = newKey;     await setSetting('tmdbKey',    tmdbKey);    settingsToSave.tmdbKey    = tmdbKey;    }
-  if (newGhToken !== ghToken)    { ghToken    = newGhToken; await setSetting('ghToken',    ghToken);    settingsToSave.ghToken    = ghToken;    }
-  if (newGistId  !== gistId)     { gistId     = newGistId;  await setSetting('gistId',     gistId);     settingsToSave.gistId     = gistId;     }
-  if (newMode    !== ratingMode) { ratingMode  = newMode;   await setSetting('ratingMode', ratingMode); settingsToSave.ratingMode = ratingMode; renderAll(); }
-  if (newTheme   !== currentTheme || newAccent !== currentAccent) {
+  const newTmdb = newKeySources.tmdbKey === 'config' ? (CFG.TMDB_KEY || '') : newKey;
+  const newGh   = newKeySources.ghToken  === 'config' ? (CFG.GITHUB_TOKEN || '') : newGhToken;
+  const newGist = newKeySources.gistId   === 'config' ? (CFG.GIST_ID || '') : newGistId;
+
+  if (newTmdb !== tmdbKey)   { tmdbKey = newTmdb; await setSetting('tmdbKey', tmdbKey); settingsToSave.tmdbKey = tmdbKey; }
+  if (newGh   !== ghToken)   { ghToken = newGh;   await setSetting('ghToken', ghToken); settingsToSave.ghToken = ghToken; }
+  if (newGist !== gistId)    { gistId  = newGist;  await setSetting('gistId',  gistId);  settingsToSave.gistId  = gistId;  }
+  if (newMode !== ratingMode) { ratingMode = newMode; await setSetting('ratingMode', ratingMode); settingsToSave.ratingMode = ratingMode; renderAll(); }
+  if (newTheme !== currentTheme || newAccent !== currentAccent) {
     applyTheme(newTheme, newAccent);
     await setSetting('theme',  newTheme);
     await setSetting('accent', newAccent);
@@ -1246,12 +1306,12 @@ async function saveSettings() {
     settingsToSave.accent = newAccent;
   }
 
-  // Sync settings to backend if online
+  // Sync to backend
   if (backendOnline) {
     try {
-      for (const [k, v] of Object.entries(settingsToSave)) {
+      for (const [k, v] of Object.entries(settingsToSave))
         await apiPut('/settings/' + k, { value: v });
-      }
+      await apiPut('/settings/keySources', { value: keySources });
     } catch(e) { console.warn('Settings sync to backend failed', e); }
   }
 
@@ -1359,19 +1419,21 @@ async function init() {
   if (!savedTheme)   savedTheme   = await getSetting('theme');
   if (!savedAccent)  savedAccent  = await getSetting('accent');
 
-  if (savedMode)    ratingMode = savedMode;
-  if (savedTmdb)    tmdbKey    = savedTmdb;
-  if (savedGhToken) ghToken    = savedGhToken;
-  if (savedGistId)  gistId     = savedGistId;
+  if (savedMode) ratingMode = savedMode;
 
-  // Config.js as final fallback
-  if (!tmdbKey    && CFG.TMDB_KEY)     tmdbKey    = CFG.TMDB_KEY;
-  if (!ghToken    && CFG.GITHUB_TOKEN) ghToken    = CFG.GITHUB_TOKEN;
-  if (!gistId     && CFG.GIST_ID)      gistId     = CFG.GIST_ID;
-  if (!ratingMode && CFG.RATING_MODE)  ratingMode = CFG.RATING_MODE;
+  // Load key source preferences from DB
+  const savedKeySources = await getSetting('keySources');
+  if (savedKeySources) keySources = { ...keySources, ...savedKeySources };
 
-  const theme  = savedTheme  || CFG.THEME  || 'dark';
-  const accent = savedAccent || CFG.ACCENT || 'gold';
+  // Resolve each key based on its source preference
+  tmdbKey = resolveKey(savedTmdb,    CFG.TMDB_KEY,      'tmdbKey');
+  ghToken = resolveKey(savedGhToken, CFG.GITHUB_TOKEN,  'ghToken');
+  gistId  = resolveKey(savedGistId,  CFG.GIST_ID,       'gistId');
+
+  if (!ratingMode) ratingMode = 'both';
+
+  const theme  = savedTheme  || 'dark';
+  const accent = savedAccent || 'gold';
   applyTheme(theme, accent);
 
   await loadAll();
@@ -1469,6 +1531,9 @@ function buildConfigJs() {
 //  CineLog — Configurazione
 //  Generato automaticamente il ${new Date().toLocaleString('it-IT')}
 //  ⚠️  Non pubblicare questo file (è già nel .gitignore)
+//
+//  Le impostazioni UI (tema, colori, modalità valutazione)
+//  vengono salvate nel database — non servono qui.
 // ─────────────────────────────────────────────────────────
 
 const CINELOG_CONFIG = {
@@ -1480,15 +1545,6 @@ const CINELOG_CONFIG = {
 
   // ID del Gist esistente (lascia vuoto per crearne uno nuovo)
   GIST_ID: '${gist}',
-
-  // Tema UI: 'dark' | 'light' | 'system'
-  THEME: '${theme}',
-
-  // Colore accent: 'gold' | 'blue' | 'green' | 'red' | 'purple' | 'pink'
-  ACCENT: '${accent}',
-
-  // Modalità valutazione: 'stars' | 'numeric' | 'both'
-  RATING_MODE: '${rating}',
 };
 `;
 }
