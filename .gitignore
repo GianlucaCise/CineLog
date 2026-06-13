@@ -14,6 +14,9 @@ logs/
 // Ignore config.js file in the frontend directory
 frontend/config.js
 
+// Ignore the database file in the backend directory
+backend/cinelog.db
+
 // Ignore the __pycache__ directory and compiled Python files in the backend directory
 backend/__pycache__/
 backend/*.pyc
