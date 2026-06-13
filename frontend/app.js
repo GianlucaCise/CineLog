@@ -700,7 +700,10 @@ async function handleImport(input) {
 }
 
 // ─── PAGES ─────────────────────────────────────────────────
-function showPage(name) {
+const PAGE_URLS = { library: '/', watchlist: '/watchlist', saghe: '/saghe' };
+const URL_PAGES = { '/': 'library', '/watchlist': 'watchlist', '/saghe': 'saghe' };
+
+function showPage(name, pushHistory = true) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
@@ -711,7 +714,16 @@ function showPage(name) {
   if (name === 'library')   renderGrid();
   if (name === 'watchlist') renderWatchlist();
   if (name === 'saghe')     renderSaghe();
+  // Update URL only for main tabs
+  if (pushHistory && PAGE_URLS[name]) {
+    history.pushState({ page: name }, '', PAGE_URLS[name]);
+  }
 }
+
+window.addEventListener('popstate', e => {
+  const name = (e.state?.page) || URL_PAGES[location.pathname] || 'library';
+  showPage(name, false);
+});
 
 // ─── RENDER ────────────────────────────────────────────────
 function renderAll() { renderGrid(); renderWatchlist(); renderSaghe(); updateStats(); }
@@ -1487,7 +1499,10 @@ function startApp() {
   document.getElementById('setup-overlay').style.display = 'none';
   document.getElementById('app').classList.add('visible');
   renderAll();
-  showPage('library');
+  // Open the page matching the current URL, fallback to library
+  const initialPage = URL_PAGES[location.pathname] || 'library';
+  history.replaceState({ page: initialPage }, '', PAGE_URLS[initialPage] || '/');
+  showPage(initialPage, false);
 }
 
 // ─── THEME & ACCENT ────────────────────────────────────────

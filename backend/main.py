@@ -295,6 +295,13 @@ async def bulk_import(data: dict):
         await db.close()
 
 
-# ─── STATIC FILES (frontend) ───────────────────────────────
+# ─── FRONTEND ROUTES (SPA fallback) ────────────────────────
+# Serve index.html for all frontend routes so the History API works on refresh
+@app.get("/watchlist", include_in_schema=False)
+@app.get("/saghe",     include_in_schema=False)
+async def spa_fallback():
+    return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+# ─── STATIC FILES (frontend) ────────────────────────────────
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

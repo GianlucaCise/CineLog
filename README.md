@@ -1,8 +1,6 @@
-# 🎬 CineLog
+# 🎬 CineLog v2
 
 Diario personale di film e serie TV con backend FastAPI + SQLite.
-
-> **Disclaimer:** config.js è ancora buggato
 
 ## Avvio rapido (Windows)
 
