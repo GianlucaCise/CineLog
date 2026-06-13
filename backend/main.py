@@ -45,17 +45,23 @@ app.add_middleware(
 
 # ─── PYDANTIC MODELS ───────────────────────────────────────
 class MediaIn(BaseModel):
-    id:        Optional[str]  = None
-    title:     str
-    type:      str
-    year:      Optional[int]  = None
-    genre:     Optional[str]  = None
-    synopsis:  Optional[str]  = None
-    poster:    Optional[str]  = None
-    rating:    Optional[Any]  = None
-    saga_id:   Optional[str]  = None
-    watchlist: Optional[bool] = False
-    seasons:   Optional[Any]  = None
+    id:            Optional[str]  = None
+    title:         str
+    type:          str
+    year:          Optional[int]  = None
+    genre:         Optional[str]  = None
+    synopsis:      Optional[str]  = None
+    poster:        Optional[str]  = None
+    rating:        Optional[Any]  = None
+    saga_id:       Optional[str]  = None
+    watchlist:     Optional[bool] = False
+    seasons:       Optional[Any]  = None
+    tags:          Optional[Any]  = None
+    runtime:       Optional[int]  = None
+    progress:      Optional[Any]  = None
+    watched_start: Optional[str]  = None
+    watched_end:   Optional[str]  = None
+    notes:         Optional[str]  = None
 
 class SagaIn(BaseModel):
     id:          Optional[str] = None
@@ -115,14 +121,19 @@ async def create_media(item: MediaIn):
     try:
         await db.execute("""
             INSERT INTO media (id, title, type, year, genre, synopsis, poster,
-                               rating, saga_id, watchlist, seasons)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                               rating, saga_id, watchlist, seasons,
+                               tags, runtime, progress, watched_start, watched_end, notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             item_id, item.title, item.type, item.year, item.genre,
             item.synopsis, item.poster,
-            json.dumps(item.rating) if item.rating is not None else None,
+            json.dumps(item.rating)   if item.rating   is not None else None,
             item.saga_id, int(item.watchlist or False),
-            json.dumps(item.seasons) if item.seasons is not None else None,
+            json.dumps(item.seasons)  if item.seasons  is not None else None,
+            json.dumps(item.tags)     if item.tags      is not None else None,
+            item.runtime,
+            json.dumps(item.progress) if item.progress  is not None else None,
+            item.watched_start, item.watched_end, item.notes,
         ))
         await db.commit()
         async with db.execute("SELECT * FROM media WHERE id=?", (item_id,)) as cur:
@@ -143,14 +154,19 @@ async def update_media(media_id: str, item: MediaIn):
             UPDATE media SET
                 title=?, type=?, year=?, genre=?, synopsis=?, poster=?,
                 rating=?, saga_id=?, watchlist=?, seasons=?,
+                tags=?, runtime=?, progress=?, watched_start=?, watched_end=?, notes=?,
                 updated_at=datetime('now')
             WHERE id=?
         """, (
             item.title, item.type, item.year, item.genre,
             item.synopsis, item.poster,
-            json.dumps(item.rating) if item.rating is not None else None,
+            json.dumps(item.rating)   if item.rating   is not None else None,
             item.saga_id, int(item.watchlist or False),
-            json.dumps(item.seasons) if item.seasons is not None else None,
+            json.dumps(item.seasons)  if item.seasons  is not None else None,
+            json.dumps(item.tags)     if item.tags      is not None else None,
+            item.runtime,
+            json.dumps(item.progress) if item.progress  is not None else None,
+            item.watched_start, item.watched_end, item.notes,
             media_id,
         ))
         await db.commit()
@@ -255,6 +271,35 @@ async def set_setting(key: str, body: SettingIn):
         await db.close()
 
 
+# ─── STATS ────────────────────────────────────────────────
+@app.get("/api/stats", tags=["System"])
+async def get_stats():
+    db = await get_db()
+    try:
+        stats = {}
+        async with db.execute("SELECT COUNT(*) FROM media") as c:
+            stats["total"] = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM media WHERE type='movie'") as c:
+            stats["movies"] = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM media WHERE type='series'") as c:
+            stats["series"] = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM media WHERE rating IS NOT NULL") as c:
+            stats["rated"] = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM media WHERE watchlist=1") as c:
+            stats["watchlist"] = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM sagas") as c:
+            stats["sagas"] = (await c.fetchone())[0]
+        async with db.execute("SELECT SUM(runtime) FROM media WHERE runtime IS NOT NULL AND watched_end IS NOT NULL") as c:
+            stats["total_minutes_watched"] = (await c.fetchone())[0] or 0
+        async with db.execute("SELECT genre, COUNT(*) as cnt FROM media WHERE genre IS NOT NULL GROUP BY genre ORDER BY cnt DESC LIMIT 10") as c:
+            stats["top_genres"] = [{"genre": r[0], "count": r[1]} for r in await c.fetchall()]
+        async with db.execute("SELECT year, COUNT(*) as cnt FROM media WHERE year IS NOT NULL GROUP BY year ORDER BY cnt DESC LIMIT 10") as c:
+            stats["top_years"] = [{"year": r[0], "count": r[1]} for r in await c.fetchall()]
+        return stats
+    finally:
+        await db.close()
+
+
 # ─── BULK IMPORT (per migrazione da IndexedDB) ─────────────
 @app.post("/api/import", tags=["System"])
 async def bulk_import(data: dict):
@@ -297,8 +342,9 @@ async def bulk_import(data: dict):
 
 # ─── FRONTEND ROUTES (SPA fallback) ────────────────────────
 # Serve index.html for all frontend routes so the History API works on refresh
-@app.get("/watchlist", include_in_schema=False)
-@app.get("/saghe",     include_in_schema=False)
+@app.get("/watchlist",    include_in_schema=False)
+@app.get("/saghe",        include_in_schema=False)
+@app.get("/statistiche",  include_in_schema=False)
 async def spa_fallback():
     return FileResponse(str(FRONTEND_DIR / "index.html"))
 

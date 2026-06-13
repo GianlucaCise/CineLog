@@ -573,8 +573,8 @@ async function fillFromTmdb(data) {
 }
 
 // ─── GITHUB GIST BACKUP ────────────────────────────────────
-async function gistBackup() {
-  if (!ghToken) { toast('Inserisci un token GitHub nelle impostazioni', 'error'); return; }
+async function gistBackup(silent = false) {
+  if (!ghToken) { if (!silent) toast('Inserisci un token GitHub nelle impostazioni', 'error'); return; }
   const log = document.getElementById('gist-log');
   if (log) log.textContent = 'Preparazione dati...';
 
@@ -620,7 +620,8 @@ async function gistBackup() {
 
     const msg = `✓ Backup completato — ${new Date().toLocaleTimeString('it-IT')}\nGist ID: ${gistId}\nURL: ${data.html_url}`;
     if (log) log.textContent = msg;
-    toast('Backup su Gist completato!', 'success');
+    if (!silent) toast('Backup su Gist completato!', 'success');
+  else toast('Auto-backup Gist completato', 'info', 2000);
 
     // Update the gist ID field in settings if visible
     const gistInput = document.getElementById('settings-gist-id');
@@ -628,7 +629,7 @@ async function gistBackup() {
   } catch (e) {
     const msg = '✕ Errore: ' + e.message;
     if (log) log.textContent = msg;
-    toast('Errore backup: ' + e.message, 'error');
+    if (!silent) toast('Errore backup: ' + e.message, 'error');
   }
 }
 
@@ -700,21 +701,21 @@ async function handleImport(input) {
 }
 
 // ─── PAGES ─────────────────────────────────────────────────
-const PAGE_URLS = { library: '/', watchlist: '/watchlist', saghe: '/saghe' };
-const URL_PAGES = { '/': 'library', '/watchlist': 'watchlist', '/saghe': 'saghe' };
+const PAGE_URLS = { library: '/', watchlist: '/watchlist', saghe: '/saghe', statistiche: '/statistiche' };
+const URL_PAGES = { '/': 'library', '/watchlist': 'watchlist', '/saghe': 'saghe', '/statistiche': 'statistiche' };
 
 function showPage(name, pushHistory = true) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
-  const map = { library: 0, watchlist: 1, saghe: 2 };
+  const map = { library: 0, watchlist: 1, saghe: 2, statistiche: 3 };
   const idx = map[name];
   if (idx != null) document.querySelectorAll('.nav-btn')[idx]?.classList.add('active');
   currentPage = name;
-  if (name === 'library')   renderGrid();
-  if (name === 'watchlist') renderWatchlist();
-  if (name === 'saghe')     renderSaghe();
-  // Update URL only for main tabs
+  if (name === 'library')      renderGrid();
+  if (name === 'watchlist')    renderWatchlist();
+  if (name === 'saghe')        renderSaghe();
+  if (name === 'statistiche')  renderStats();
   if (pushHistory && PAGE_URLS[name]) {
     history.pushState({ page: name }, '', PAGE_URLS[name]);
   }
@@ -780,11 +781,20 @@ function makeCard(m, showWatchlistBadge = false) {
 function renderGrid() {
   const grid  = document.getElementById('media-grid');
   const empty = document.getElementById('library-empty');
-  const items = getFilteredMedia();
+  let items   = sortItems(getFilteredMedia());
   grid.innerHTML = '';
+
+  // Switch between grid and list view
+  const isGrid = viewMode === 'grid';
+  grid.className = isGrid ? 'media-grid' : 'media-list';
+
   if (!items.length) { empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  items.forEach((m, i) => { const c = makeCard(m); c.style.animationDelay = (i * 0.03) + 's'; grid.appendChild(c); });
+  items.forEach((m, i) => {
+    const c = isGrid ? makeCard(m) : makeListRow(m);
+    c.style.animationDelay = (i * 0.02) + 's';
+    grid.appendChild(c);
+  });
 }
 
 function renderWatchlist() {
@@ -914,8 +924,13 @@ function renderDetail(id) {
           <div id="detail-rating-val">${displayRating(m.rating)}</div>
           <button class="btn btn-ghost btn-sm" style="margin-top:.25rem" onclick="openMediaRate('${id}')">Modifica valutazione</button>
         </div>
+        ${m.runtime ? renderProgressBar(m.progress, m.runtime) : ''}
+        ${formatWatchedDates(m.watched_start, m.watched_end) ? `<p style="font-size:.82rem;color:var(--text2);margin:.5rem 0">${formatWatchedDates(m.watched_start, m.watched_end)}</p>` : ''}
+        ${(m.tags||[]).length ? `<div class="tags-wrap" style="margin:.5rem 0">${m.tags.map(t=>`<span class="tag-pill">${t}</span>`).join('')}</div>` : ''}
+        ${m.notes ? `<div class="detail-notes">${m.notes}</div>` : ''}
         <div class="detail-actions">
           <button class="btn btn-ghost btn-sm" onclick="editMedia('${id}')">✏ Modifica</button>
+          ${m.runtime ? `<button class="btn btn-ghost btn-sm" onclick="openProgressModal('${id}')">⏱ Avanzamento</button>` : ''}
           <button class="btn ${m.watchlist ? 'btn-success' : 'btn-ghost'} btn-sm" onclick="toggleWatchlist('${id}')">
             ${m.watchlist ? '✓ In watchlist' : '📌 Aggiungi a watchlist'}
           </button>
@@ -1068,7 +1083,8 @@ function openAddWatchlist() {
 }
 
 function clearAddForm() {
-  ['f-title','f-year','f-genre','f-synopsis','f-poster','f-seasons'].forEach(id => {
+  ['f-title','f-year','f-genre','f-synopsis','f-poster','f-seasons',
+   'f-runtime','f-notes','f-watched-start','f-watched-end'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   document.getElementById('f-type').value = 'movie';
@@ -1076,6 +1092,9 @@ function clearAddForm() {
   document.getElementById('f-watchlist').checked = false;
   document.getElementById('tmdb-search').value = '';
   document.getElementById('tmdb-results').style.display = 'none';
+  document.getElementById('f-tags-wrap').innerHTML = '';
+  document.getElementById('f-tag-input').value = '';
+  _formTags = [];
   populateSagaSelect('');
   const ratingWrap = document.getElementById('add-rating-wrap');
   ratingWrap.innerHTML = '';
@@ -1099,18 +1118,30 @@ async function saveMediaForm() {
   const title = document.getElementById('f-title').value.trim();
   if (!title) { toast('Il titolo è obbligatorio', 'error'); return; }
 
-  const type     = document.getElementById('f-type').value;
-  const year     = document.getElementById('f-year').value;
-  const genre    = document.getElementById('f-genre').value.trim();
-  const synopsis = document.getElementById('f-synopsis').value.trim();
-  const poster   = document.getElementById('f-poster').value.trim();
-  const sagaId   = document.getElementById('f-saga').value || null;
-  const watchlist = document.getElementById('f-watchlist').checked;
-  const rating   = _addRatingPicker ? _addRatingPicker() : null;
+  const type          = document.getElementById('f-type').value;
+  const year          = document.getElementById('f-year').value;
+  const genre         = document.getElementById('f-genre').value.trim();
+  const synopsis      = document.getElementById('f-synopsis').value.trim();
+  const poster        = document.getElementById('f-poster').value.trim();
+  const sagaId        = document.getElementById('f-saga').value || null;
+  const watchlist     = document.getElementById('f-watchlist').checked;
+  const rating        = _addRatingPicker ? _addRatingPicker() : null;
+  const runtime       = parseInt(document.getElementById('f-runtime').value) || null;
+  const notes         = document.getElementById('f-notes').value.trim() || null;
+  const watchedStart  = document.getElementById('f-watched-start').value || null;
+  const watchedEnd    = document.getElementById('f-watched-end').value || null;
+  const tags          = [..._formTags];
+
+  const baseFields = {
+    title, type, year: year ? parseInt(year) : null,
+    genre, synopsis, poster, rating, sagaId, watchlist,
+    tags, runtime, notes,
+    watched_start: watchedStart, watched_end: watchedEnd,
+  };
 
   if (editingMediaId) {
     const m = mediaList.find(x => x.id === editingMediaId);
-    Object.assign(m, { title, type, year: year ? parseInt(year) : null, genre, synopsis, poster, rating, sagaId, watchlist });
+    Object.assign(m, baseFields);
     if (type === 'series' && !m.seasons) m.seasons = [];
     await saveMedia(m);
   } else {
@@ -1130,10 +1161,7 @@ async function saveMediaForm() {
     }
     const m = {
       id: Date.now().toString() + Math.random().toString(36).slice(2,6),
-      title, type,
-      year: year ? parseInt(year) : null,
-      genre, synopsis, poster, rating, sagaId, watchlist,
-      seasons,
+      ...baseFields, seasons,
     };
     await saveMedia(m);
   }
@@ -1147,13 +1175,20 @@ function editMedia(id) {
   const m = mediaList.find(x => x.id === id);
   editingMediaId = id;
   document.getElementById('add-modal-title').textContent = 'Modifica titolo';
-  document.getElementById('f-title').value    = m.title;
-  document.getElementById('f-type').value     = m.type;
-  document.getElementById('f-year').value     = m.year || '';
-  document.getElementById('f-genre').value    = m.genre || '';
-  document.getElementById('f-synopsis').value = m.synopsis || '';
-  document.getElementById('f-poster').value   = m.poster || '';
-  document.getElementById('f-watchlist').checked = m.watchlist || false;
+  document.getElementById('f-title').value         = m.title;
+  document.getElementById('f-type').value          = m.type;
+  document.getElementById('f-year').value          = m.year || '';
+  document.getElementById('f-genre').value         = m.genre || '';
+  document.getElementById('f-synopsis').value      = m.synopsis || '';
+  document.getElementById('f-poster').value        = m.poster || '';
+  document.getElementById('f-runtime').value       = m.runtime || '';
+  document.getElementById('f-notes').value         = m.notes || '';
+  document.getElementById('f-watched-start').value = m.watched_start || '';
+  document.getElementById('f-watched-end').value   = m.watched_end || '';
+  document.getElementById('f-watchlist').checked   = m.watchlist || false;
+  // Tags
+  _formTags = [...(m.tags || [])];
+  renderFormTags();
   toggleSeriesFields();
   populateSagaSelect(m.sagaId || '');
   const ratingWrap = document.getElementById('add-rating-wrap');
@@ -1256,6 +1291,9 @@ async function openSettings() {
   document.getElementById('settings-gist-id').value   = dbGistId;
   document.getElementById('settings-rating').value    = ratingMode;
   document.getElementById('gist-log').textContent     = '';
+  const savedInterval = await getSetting('autoBackupInterval');
+  const abSel = document.getElementById('settings-auto-backup');
+  if (abSel) abSel.value = savedInterval || '';
   document.getElementById('config-preview').style.display = 'none';
 
   // Populate source selectors
@@ -1336,6 +1374,15 @@ async function saveSettings() {
         await apiPut('/settings/' + k, { value: v });
       await apiPut('/settings/keySources', { value: keySources });
     } catch(e) { console.warn('Settings sync to backend failed', e); }
+  }
+
+  // Auto backup interval
+  const abSel = document.getElementById('settings-auto-backup');
+  if (abSel) {
+    const interval = abSel.value || null;
+    await setSetting('autoBackupInterval', interval);
+    if (backendOnline) { try { await apiPut('/settings/autoBackupInterval', { value: interval }); } catch(e) {} }
+    scheduleAutoBackup();
   }
 
   updateHeaderApiPill(tmdbKey);
@@ -1499,10 +1546,10 @@ function startApp() {
   document.getElementById('setup-overlay').style.display = 'none';
   document.getElementById('app').classList.add('visible');
   renderAll();
-  // Open the page matching the current URL, fallback to library
   const initialPage = URL_PAGES[location.pathname] || 'library';
   history.replaceState({ page: initialPage }, '', PAGE_URLS[initialPage] || '/');
   showPage(initialPage, false);
+  scheduleAutoBackup();
 }
 
 // ─── THEME & ACCENT ────────────────────────────────────────
@@ -1646,4 +1693,270 @@ async function migrateToBackend() {
   } catch(e) {
     toast('Errore migrazione: ' + e.message, 'error');
   }
+}
+
+// ─── TAGS ──────────────────────────────────────────────────
+let _formTags = [];
+
+function renderFormTags() {
+  const wrap = document.getElementById('f-tags-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = _formTags.map((t, i) => `
+    <span class="tag-pill">
+      ${t}<button type="button" onclick="removeFormTag(${i})" class="tag-remove">✕</button>
+    </span>`).join('');
+}
+
+function addFormTag() {
+  const inp = document.getElementById('f-tag-input');
+  const val = inp.value.trim().toLowerCase();
+  if (!val || _formTags.includes(val)) { inp.value = ''; return; }
+  _formTags.push(val);
+  inp.value = '';
+  renderFormTags();
+}
+
+function removeFormTag(i) {
+  _formTags.splice(i, 1);
+  renderFormTags();
+}
+
+function handleTagKeydown(e) {
+  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addFormTag(); }
+}
+
+// ─── PROGRESS ──────────────────────────────────────────────
+function calcProgress(watchedMinutes, totalMinutes) {
+  if (!totalMinutes || totalMinutes <= 0) return null;
+  const pct = Math.min(100, Math.round((watchedMinutes / totalMinutes) * 100));
+  return { watched_minutes: watchedMinutes, total_minutes: totalMinutes, percent: pct };
+}
+
+function renderProgressBar(progress, runtime) {
+  if (!runtime) return '';
+  const pct = progress?.percent ?? 0;
+  const watched = progress?.watched_minutes ?? 0;
+  return `
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <span class="progress-label">${watched}/${runtime} min · ${pct}%</span>
+    </div>`;
+}
+
+function openProgressModal(mediaId) {
+  const m = mediaList.find(x => x.id === mediaId);
+  if (!m?.runtime) { toast('Imposta prima la durata nelle impostazioni del titolo', 'info'); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'form-group';
+  const lbl = document.createElement('label'); lbl.className = 'form-label';
+  lbl.textContent = `Minuti visti (su ${m.runtime})`;
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.min = 0; inp.max = m.runtime; inp.step = 1;
+  inp.className = 'form-input';
+  inp.value = m.progress?.watched_minutes ?? 0;
+  const bar = document.createElement('div'); bar.style.marginTop = '.5rem';
+  bar.innerHTML = renderProgressBar(m.progress, m.runtime);
+  inp.oninput = () => {
+    const prog = calcProgress(parseInt(inp.value)||0, m.runtime);
+    bar.innerHTML = renderProgressBar(prog, m.runtime);
+  };
+  wrap.append(lbl, inp, bar);
+  makeDynModal('Avanzamento visione', wrap, async () => {
+    m.progress = calcProgress(parseInt(inp.value)||0, m.runtime);
+    await saveMedia(m);
+    document.getElementById('dyn-modal')?.remove();
+    renderDetail(mediaId);
+    toast('Avanzamento salvato', 'success');
+  });
+}
+
+// ─── WATCHED DATES HELPERS ─────────────────────────────────
+function formatWatchedDates(start, end) {
+  if (!start && !end) return null;
+  const fmt = d => new Date(d).toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric' });
+  if (start && end) {
+    const s = new Date(start).toDateString();
+    const e = new Date(end).toDateString();
+    if (s === e) return 'Visto il ' + fmt(start);
+    return 'Dal ' + fmt(start) + ' al ' + fmt(end);
+  }
+  if (end)   return 'Finito il ' + fmt(end);
+  if (start) return 'Iniziato il ' + fmt(start);
+}
+
+// ─── LIBRARY VIEW MODE & SORTING ───────────────────────────
+let viewMode   = 'grid';   // 'grid' | 'list'
+let sortMode   = 'added';  // 'added' | 'title' | 'year' | 'rating'
+let sortDir    = 'desc';
+
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById('btn-view-grid')?.classList.toggle('active', mode === 'grid');
+  document.getElementById('btn-view-list')?.classList.toggle('active', mode === 'list');
+  renderGrid();
+}
+
+function setSort(mode) {
+  if (sortMode === mode) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortMode = mode; sortDir = mode === 'title' ? 'asc' : 'desc'; }
+  document.querySelectorAll('.sort-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.sort === sortMode));
+  renderGrid();
+}
+
+function sortItems(items) {
+  const dir = sortDir === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => {
+    switch (sortMode) {
+      case 'title':  return dir * a.title.localeCompare(b.title, 'it');
+      case 'year':   return dir * ((a.year||0) - (b.year||0));
+      case 'rating': return dir * ((a.rating?.numeric ?? a.rating?.stars*2 ?? -1) - (b.rating?.numeric ?? b.rating?.stars*2 ?? -1));
+      default:       return dir * ((a.created_at||'') < (b.created_at||'') ? -1 : 1);
+    }
+  });
+}
+
+function makeListRow(m) {
+  const sagaName = m.sagaId ? sagaList.find(s => s.id === m.sagaId)?.name : '';
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.innerHTML = `
+    ${m.poster ? `<img class="list-thumb" src="${m.poster}" loading="lazy" onerror="this.style.display='none'">` : '<div class="list-thumb-ph">🎬</div>'}
+    <div class="list-info">
+      <div class="list-title">${m.title}</div>
+      <div class="list-meta">${m.year||''}${m.genre?' · '+m.genre:''}${sagaName?' · '+sagaName:''}</div>
+      ${(m.tags||[]).length ? `<div class="list-tags">${m.tags.map(t=>`<span class="tag-pill tag-sm">${t}</span>`).join('')}</div>` : ''}
+    </div>
+    <div class="list-rating">${displayRatingSmall(m.rating)}</div>`;
+  row.onclick = () => openDetail(m.id);
+  return row;
+}
+
+// ─── AUTO BACKUP ───────────────────────────────────────────
+let _autoBackupTimer = null;
+
+async function scheduleAutoBackup() {
+  clearInterval(_autoBackupTimer);
+  const intervalHours = await getSetting('autoBackupInterval');
+  if (!intervalHours || !ghToken) return;
+  const ms = intervalHours * 60 * 60 * 1000;
+  _autoBackupTimer = setInterval(async () => {
+    if (!ghToken) return;
+    await gistBackup(true); // silent=true
+    await setSetting('lastAutoBackup', new Date().toISOString());
+  }, ms);
+  console.info(`Auto backup ogni ${intervalHours}h`);
+}
+
+// ─── STATS PAGE ────────────────────────────────────────────
+async function renderStats() {
+  const cont = document.getElementById('stats-content');
+  if (!cont) return;
+  cont.innerHTML = '<p style="color:var(--text3)">Caricamento...</p>';
+
+  // Compute from local data (always available)
+  const total    = mediaList.length;
+  const movies   = mediaList.filter(m => m.type === 'movie').length;
+  const series   = mediaList.filter(m => m.type === 'series').length;
+  const rated    = mediaList.filter(m => !ratingIsEmpty(m.rating)).length;
+  const watchl   = mediaList.filter(m => m.watchlist).length;
+
+  const allRatings = mediaList.filter(m => m.rating?.numeric != null).map(m => m.rating.numeric);
+  const avgRating  = allRatings.length ? (allRatings.reduce((a,b)=>a+b,0)/allRatings.length).toFixed(1) : '—';
+
+  const totalMins = mediaList.filter(m => m.runtime && m.watched_end)
+    .reduce((s, m) => s + m.runtime, 0);
+  const totalHours = Math.floor(totalMins / 60);
+  const totalDays  = (totalMins / 60 / 24).toFixed(1);
+
+  // Genre distribution
+  const genreCounts = {};
+  mediaList.forEach(m => { if (m.genre) genreCounts[m.genre] = (genreCounts[m.genre]||0)+1; });
+  const topGenres = Object.entries(genreCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  // Rating distribution
+  const ratingBuckets = Array(11).fill(0);
+  allRatings.forEach(r => { const b = Math.round(r); if (b >= 0 && b <= 10) ratingBuckets[b]++; });
+  const maxBucket = Math.max(...ratingBuckets, 1);
+
+  // Tag cloud
+  const tagCounts = {};
+  mediaList.forEach(m => (m.tags||[]).forEach(t => { tagCounts[t] = (tagCounts[t]||0)+1; }));
+  const topTags = Object.entries(tagCounts).sort((a,b)=>b[1]-a[1]).slice(0,20);
+
+  // Year distribution
+  const yearCounts = {};
+  mediaList.forEach(m => { if (m.year) yearCounts[m.year] = (yearCounts[m.year]||0)+1; });
+  const topYears = Object.entries(yearCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  const lastBackup = await getSetting('lastAutoBackup');
+
+  cont.innerHTML = `
+    <!-- BIG NUMBERS -->
+    <div class="stats-big-grid">
+      <div class="stat-big"><span class="stat-big-num">${total}</span><span class="stat-big-label">Titoli totali</span></div>
+      <div class="stat-big"><span class="stat-big-num">${movies}</span><span class="stat-big-label">Film</span></div>
+      <div class="stat-big"><span class="stat-big-num">${series}</span><span class="stat-big-label">Serie</span></div>
+      <div class="stat-big"><span class="stat-big-num">${sagaList.length}</span><span class="stat-big-label">Saghe</span></div>
+      <div class="stat-big"><span class="stat-big-num">${rated}</span><span class="stat-big-label">Valutati</span></div>
+      <div class="stat-big"><span class="stat-big-num">${avgRating}</span><span class="stat-big-label">Media voti</span></div>
+      <div class="stat-big"><span class="stat-big-num">${totalHours}h</span><span class="stat-big-label">Ore viste</span></div>
+      <div class="stat-big"><span class="stat-big-num">${watchl}</span><span class="stat-big-label">Da vedere</span></div>
+    </div>
+
+    <!-- RATING DISTRIBUTION -->
+    ${allRatings.length ? `
+    <div class="stats-section">
+      <h3 class="stats-section-title">Distribuzione voti</h3>
+      <div class="rating-dist">
+        ${ratingBuckets.map((n, i) => `
+          <div class="rating-dist-col">
+            <div class="rating-dist-bar-wrap">
+              <div class="rating-dist-bar" style="height:${Math.round((n/maxBucket)*100)}%"></div>
+            </div>
+            <div class="rating-dist-label">${i}</div>
+            ${n ? `<div class="rating-dist-count">${n}</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- GENRES -->
+    ${topGenres.length ? `
+    <div class="stats-section">
+      <h3 class="stats-section-title">Generi più visti</h3>
+      <div class="stat-bar-list">
+        ${topGenres.map(([g,n]) => `
+          <div class="stat-bar-row">
+            <span class="stat-bar-label">${g}</span>
+            <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${Math.round(n/topGenres[0][1]*100)}%"></div></div>
+            <span class="stat-bar-count">${n}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- TAG CLOUD -->
+    ${topTags.length ? `
+    <div class="stats-section">
+      <h3 class="stats-section-title">Tag più usati</h3>
+      <div class="tag-cloud">
+        ${topTags.map(([t,n]) => `<span class="tag-pill" style="font-size:${Math.min(1.2, .7+n*0.12)}rem">${t} <b>${n}</b></span>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- YEARS -->
+    ${topYears.length ? `
+    <div class="stats-section">
+      <h3 class="stats-section-title">Anni più frequenti</h3>
+      <div class="stat-bar-list">
+        ${topYears.map(([y,n]) => `
+          <div class="stat-bar-row">
+            <span class="stat-bar-label">${y}</span>
+            <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${Math.round(n/topYears[0][1]*100)}%"></div></div>
+            <span class="stat-bar-count">${n}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${lastBackup ? `<p style="font-size:.78rem;color:var(--text3);margin-top:1rem">Ultimo backup automatico: ${new Date(lastBackup).toLocaleString('it-IT')}</p>` : ''}
+  `;
 }

@@ -59,6 +59,7 @@
         <span class="nav-badge" id="watchlist-badge" style="display:none">0</span>
       </button>
       <button class="nav-btn" onclick="showPage('saghe')">Saghe</button>
+      <button class="nav-btn" onclick="showPage('statistiche')">Statistiche</button>
     </nav>
 
     <div id="backend-indicator" class="backend-pill offline" onclick="testBackendConnection()" title="Stato server backend">○ Offline</div>
@@ -81,6 +82,19 @@
         <button class="filter-btn" onclick="setFilter('unrated',this)">Da valutare</button>
         <div class="search-wrap">
           <input type="text" id="search-input" placeholder="Cerca..." oninput="filterSearch(this.value)">
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="sort-group">
+          <span class="toolbar-label">Ordina:</span>
+          <button class="sort-btn active" data-sort="added"  onclick="setSort('added')">Aggiunti</button>
+          <button class="sort-btn"        data-sort="title"  onclick="setSort('title')">Titolo</button>
+          <button class="sort-btn"        data-sort="year"   onclick="setSort('year')">Anno</button>
+          <button class="sort-btn"        data-sort="rating" onclick="setSort('rating')">Voto</button>
+        </div>
+        <div class="view-group">
+          <button class="btn btn-ghost btn-sm active" id="btn-view-grid" onclick="setViewMode('grid')" title="Vista griglia">▦</button>
+          <button class="btn btn-ghost btn-sm"        id="btn-view-list" onclick="setViewMode('list')" title="Vista lista">☰</button>
         </div>
       </div>
       <div class="media-grid" id="media-grid"></div>
@@ -119,6 +133,12 @@
         <p>Raggruppa film e serie in saghe (es. Spider-Man, Harry Potter, MCU…)</p>
         <button class="btn btn-primary" onclick="openAddSaga()">+ Crea la prima</button>
       </div>
+    </div>
+
+    <!-- ── STATISTICHE ── -->
+    <div class="page" id="page-statistiche">
+      <h2 style="font-size:1.5rem;margin-bottom:1.5rem">Statistiche</h2>
+      <div id="stats-content"></div>
     </div>
 
     <!-- ── DETTAGLIO TITOLO ── -->
@@ -189,6 +209,39 @@
     <div class="form-group">
       <label class="form-label">Sinossi</label>
       <textarea class="form-textarea" id="f-synopsis" placeholder="Breve descrizione…"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Note / recensione personale</label>
+      <textarea class="form-textarea" id="f-notes" placeholder="Cosa ne penso…" style="min-height:60px"></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Durata (minuti)</label>
+        <input class="form-input" id="f-runtime" type="number" min="1" placeholder="Es. 120">
+        <p class="form-hint">Usata per l'avanzamento visione</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tag personalizzati</label>
+        <div style="display:flex;gap:.4rem">
+          <input class="form-input" id="f-tag-input" placeholder="aggiungi tag…"
+                 onkeydown="handleTagKeydown(event)" style="flex:1">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addFormTag()">+</button>
+        </div>
+        <div id="f-tags-wrap" class="tags-wrap" style="margin-top:.4rem"></div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Inizio visione</label>
+        <input class="form-input" id="f-watched-start" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fine visione</label>
+        <input class="form-input" id="f-watched-end" type="date">
+      </div>
     </div>
 
     <div class="form-group">
@@ -390,6 +443,16 @@
           <input class="form-input" id="settings-gist-id" placeholder="es. a1b2c3d4e5f6…">
         </div>
         <div class="gist-log" id="gist-log"></div>
+        <div class="form-group" style="margin-top:1rem">
+          <label class="form-label">Auto backup ogni</label>
+          <select class="form-select" id="settings-auto-backup">
+            <option value="">Disabilitato</option>
+            <option value="1">1 ora</option>
+            <option value="6">6 ore</option>
+            <option value="12">12 ore</option>
+            <option value="24">24 ore</option>
+          </select>
+        </div>
         <button class="btn btn-success backup-run-btn" onclick="gistBackup()">☁ Esegui il backup!</button>
         <button class="btn btn-ghost btn-sm" style="margin-top:.5rem;width:100%" onclick="gistRestore()">⬇ Ripristina da Gist</button>
       </div>
