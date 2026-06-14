@@ -869,17 +869,44 @@ function renderDetail(id) {
   let seasonsHtml = '';
   if (m.type === 'series') {
     const seasons = m.seasons || [];
+
+    // Compute overall series progress from watched flags
+    const seriesProgress = calcSeriesProgress(seasons);
+
+    // Find current episode (first unwatched)
+    const currentEp = findCurrentEpisode(seasons);
+
     seasonsHtml = `<div class="seasons-section">
       <div class="section-header">
         <h2 class="section-title">Stagioni</h2>
         <button class="btn btn-ghost btn-sm" onclick="addSeason('${id}')">+ Stagione</button>
-      </div>`;
+      </div>
+      ${seriesProgress.total > 0 ? `
+        <div class="series-progress-bar">
+          <div class="series-progress-info">
+            ${currentEp
+              ? `<span class="series-current-ep">▶ S${String(currentEp.si+1).padStart(2,'0')}E${String(currentEp.ep.num||currentEp.ei+1).padStart(2,'0')}
+                 ${currentEp.ep.title ? '· '+currentEp.ep.title : ''}</span>`
+              : `<span style="color:var(--green);font-size:.82rem">✓ Completata</span>`}
+            <span class="series-progress-label">${seriesProgress.watched}/${seriesProgress.total} episodi · ${seriesProgress.percent}%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${seriesProgress.percent}%"></div></div>
+        </div>` : ''}`;
+
     seasons.forEach((s, si) => {
+      // Season-level progress
+      const seasonWatched = (s.episodes||[]).filter(ep => ep.watched).length;
+      const seasonTotal   = (s.episodes||[]).length;
+      const seasonPct     = seasonTotal ? Math.round(seasonWatched/seasonTotal*100) : 0;
+
       seasonsHtml += `
         <div class="season-block">
           <div class="season-header" onclick="toggleSeason(this)">
             <h3>Stagione ${s.num}</h3>
-            <div style="display:flex;align-items:center;gap:.5rem;margin-right:.5rem">${displayRatingSmall(s.rating)}</div>
+            <div style="display:flex;align-items:center;gap:.5rem;margin-right:.5rem">
+              ${seasonTotal ? `<span class="season-ep-progress">${seasonWatched}/${seasonTotal}</span>` : ''}
+              ${displayRatingSmall(s.rating)}
+            </div>
             <span class="season-toggle">▾</span>
           </div>
           <div class="season-body" id="sb-${id}-${si}">
@@ -890,16 +917,25 @@ function renderDetail(id) {
             </div>
             <ul class="episode-list">
               ${(s.episodes || []).map((ep, ei) => `
-                <li class="episode-item">
+                <li class="episode-item ${ep.watched ? 'ep-watched' : ''}">
+                  <button class="ep-watch-btn ${ep.watched ? 'ep-watch-on' : ''}"
+                          onclick="toggleEpWatched('${id}',${si},${ei})"
+                          title="${ep.watched ? 'Segna come non visto' : 'Segna come visto'}">
+                    ${ep.watched ? '✓' : '○'}
+                  </button>
                   <span class="ep-num">${ep.num || ei + 1}</span>
-                  <span class="ep-title ${ep.rating ? 'watched' : ''}">${ep.title || 'Episodio ' + (ei + 1)}</span>
+                  <span class="ep-title ${ep.watched ? 'watched' : ''}">${ep.title || 'Episodio ' + (ei + 1)}</span>
                   <div class="ep-rating">
                     ${displayRatingSmall(ep.rating)}
                     <button class="ep-rate-btn" onclick="openEpRate('${id}',${si},${ei})">★</button>
                   </div>
                 </li>`).join('')}
             </ul>
-            <button class="add-ep-btn" onclick="addEpisode('${id}',${si})">+ Aggiungi episodio</button>
+            <div style="display:flex;gap:.5rem;margin-top:.75rem">
+              <button class="add-ep-btn" style="flex:1" onclick="addEpisode('${id}',${si})">+ Aggiungi episodio</button>
+              ${seasonTotal ? `<button class="btn btn-ghost btn-xs" onclick="markSeasonWatched('${id}',${si},true)" title="Segna tutta la stagione come vista">✓ Tutti</button>
+              <button class="btn btn-ghost btn-xs" onclick="markSeasonWatched('${id}',${si},false)" title="Rimuovi visto da tutta la stagione">○ Nessuno</button>` : ''}
+            </div>
           </div>
         </div>`;
     });
@@ -1959,4 +1995,46 @@ async function renderStats() {
 
     ${lastBackup ? `<p style="font-size:.78rem;color:var(--text3);margin-top:1rem">Ultimo backup automatico: ${new Date(lastBackup).toLocaleString('it-IT')}</p>` : ''}
   `;
+}
+
+// ─── SERIES PROGRESS HELPERS ───────────────────────────────
+function calcSeriesProgress(seasons) {
+  let total = 0, watched = 0;
+  (seasons || []).forEach(s => {
+    (s.episodes || []).forEach(ep => {
+      total++;
+      if (ep.watched) watched++;
+    });
+  });
+  const percent = total ? Math.round(watched / total * 100) : 0;
+  return { total, watched, percent };
+}
+
+function findCurrentEpisode(seasons) {
+  for (let si = 0; si < (seasons || []).length; si++) {
+    const eps = seasons[si].episodes || [];
+    for (let ei = 0; ei < eps.length; ei++) {
+      if (!eps[ei].watched) return { si, ei, ep: eps[ei] };
+    }
+  }
+  return null; // all watched
+}
+
+async function toggleEpWatched(mediaId, si, ei) {
+  const m  = mediaList.find(x => x.id === mediaId);
+  const ep = m.seasons[si].episodes[ei];
+  ep.watched = !ep.watched;
+  // If marking as watched and no rating yet, keep it simple — just save
+  await saveMedia(m);
+  renderDetail(mediaId);
+  // Re-open the season
+  document.getElementById(`sb-${mediaId}-${si}`)?.classList.add('open');
+}
+
+async function markSeasonWatched(mediaId, si, watched) {
+  const m = mediaList.find(x => x.id === mediaId);
+  (m.seasons[si].episodes || []).forEach(ep => ep.watched = watched);
+  await saveMedia(m);
+  renderDetail(mediaId);
+  document.getElementById(`sb-${mediaId}-${si}`)?.classList.add('open');
 }
