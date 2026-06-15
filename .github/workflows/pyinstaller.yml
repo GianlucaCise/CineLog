@@ -123,6 +123,14 @@ jobs:
             --hidden-import uvicorn.lifespan.on `
             --hidden-import aiosqlite `
             --hidden-import fastapi `
+            --hidden-import fastapi.staticfiles `
+            --hidden-import fastapi.templating `
+            --hidden-import starlette.staticfiles `
+            --hidden-import starlette.routing `
+            --hidden-import starlette.middleware `
+            --hidden-import starlette.middleware.cors `
+            --collect-all fastapi `
+            --collect-all starlette `
             entrypoint.py
         shell: pwsh
 
