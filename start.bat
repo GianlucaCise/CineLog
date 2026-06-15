@@ -46,6 +46,15 @@ if errorlevel 1 (
 )
 
 echo.
+:: Aggiorna versione cache SW ad ogni avvio (invalida cache browser)
+python -c "
+import re, time
+sw = open('..\\frontend\\service-worker.js').read()
+new_ver = int(time.time())
+sw = re.sub(r'CACHE_VERSION = \d+', f'CACHE_VERSION = {new_ver}', sw)
+open('..\\frontend\\service-worker.js', 'w').write(sw)
+" 2>nul
+
 echo  Avvio server su http://localhost:8000
 echo  Documentazione API: http://localhost:8000/docs
 echo.

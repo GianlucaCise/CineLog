@@ -342,11 +342,22 @@ async def bulk_import(data: dict):
 
 # ─── FRONTEND ROUTES (SPA fallback) ────────────────────────
 # Serve index.html for all frontend routes so the History API works on refresh
-@app.get("/watchlist",    include_in_schema=False)
-@app.get("/saghe",        include_in_schema=False)
-@app.get("/statistiche",  include_in_schema=False)
+@app.get("/watchlist",        include_in_schema=False)
+@app.get("/saghe",            include_in_schema=False)
+@app.get("/statistiche",      include_in_schema=False)
 async def spa_fallback():
     return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+@app.get("/service-worker.js", include_in_schema=False)
+async def service_worker():
+    return FileResponse(str(FRONTEND_DIR / "service-worker.js"),
+                        media_type="application/javascript",
+                        headers={"Service-Worker-Allowed": "/"})
+
+@app.get("/manifest.json", include_in_schema=False)
+async def manifest():
+    return FileResponse(str(FRONTEND_DIR / "manifest.json"),
+                        media_type="application/manifest+json")
 
 # ─── STATIC FILES (frontend) ────────────────────────────────
 if FRONTEND_DIR.exists():

@@ -1,0 +1,41 @@
+{
+  "name": "CineLog",
+  "short_name": "CineLog",
+  "description": "Diario personale di film e serie TV",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Libreria",
+      "url": "/",
+      "description": "Vai alla libreria"
+    },
+    {
+      "name": "Da vedere",
+      "url": "/watchlist",
+      "description": "Vai alla watchlist"
+    },
+    {
+      "name": "Statistiche",
+      "url": "/statistiche",
+      "description": "Vai alle statistiche"
+    }
+  ]
+}

@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CineLog</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CineLog">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
 <body>
 
@@ -519,7 +526,32 @@
 </script>
 <script src="config.js" onerror="console.info('config.js non trovato — usa le impostazioni in-app.')"></script>
 <script src="app.js"></script>
-<script>init();</script>
+<script>
+  // Register Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(reg => {
+        // When a new SW is waiting, prompt to update
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New version available
+              const t = document.createElement('div');
+              t.className = 'toast info';
+              t.style.cursor = 'pointer';
+              t.innerHTML = '<span>🔄</span><span>Aggiornamento disponibile — clicca per ricaricare</span>';
+              t.onclick = () => { newWorker.postMessage('skipWaiting'); location.reload(); };
+              document.getElementById('toast-container')?.appendChild(t);
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('SW registration failed:', err));
+  }
+
+  init();
+</script>
 
 </body>
 </html>
