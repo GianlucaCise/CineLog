@@ -1,0 +1,168 @@
+name: Build CineLog.exe
+
+# Trigger: quando crei un tag tipo v1.0, v2.1 ecc.
+# Puoi anche avviarlo manualmente da GitHub → Actions → Run workflow
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versione (es. v1.0.0)'
+        required: false
+        default: 'manual'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      # 1. Checkout del codice
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Installa Python 3.12
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # 3. Installa dipendenze backend + PyInstaller
+      - name: Installa dipendenze
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pyinstaller
+
+      # 4. Crea lo script di entrypoint che PyInstaller compilerà
+      #    Serve per includere i file statici del frontend nell'exe
+      - name: Crea entrypoint.py
+        shell: python
+        run: |
+          import os
+          entrypoint = '''
+          import sys
+          import os
+          from pathlib import Path
+
+          # Quando PyInstaller estrae i file, li mette in _MEIPASS
+          # Dobbiamo puntare FRONTEND_DIR alla cartella estratta
+          if getattr(sys, "frozen", False):
+              BASE_DIR = Path(sys._MEIPASS)
+          else:
+              BASE_DIR = Path(__file__).parent
+
+          # Sovrascrivi FRONTEND_DIR in main.py prima dell'import
+          import importlib.util, types
+          spec = importlib.util.spec_from_file_location("database", BASE_DIR / "backend" / "database.py")
+          # Patch del path frontend
+          os.environ["CINELOG_FRONTEND_DIR"] = str(BASE_DIR / "frontend")
+          os.environ["CINELOG_DB_DIR"] = str(Path(sys.executable).parent if getattr(sys, "frozen", False) else BASE_DIR / "backend")
+
+          import uvicorn
+          sys.path.insert(0, str(BASE_DIR / "backend"))
+          from main import app
+
+          if __name__ == "__main__":
+              print("CineLog avviato su http://localhost:8000")
+              print("Premi Ctrl+C per fermare.")
+              uvicorn.run(app, host="127.0.0.1", port=8000)
+          '''
+          with open("entrypoint.py", "w") as f:
+              f.write(entrypoint)
+
+      # 5. Patch di database.py e main.py per leggere i path da env
+      - name: Patch path per PyInstaller
+        shell: python
+        run: |
+          import re
+
+          # Patch database.py: DB_PATH legge da env se frozen
+          db = open("backend/database.py").read()
+          old = "DB_PATH = Path(__file__).parent / \"cinelog.db\""
+          new = (
+              "import os as _os\n"
+              "DB_PATH = Path(_os.environ.get('CINELOG_DB_DIR', Path(__file__).parent)) / 'cinelog.db'"
+          )
+          db = db.replace(old, new)
+          open("backend/database.py", "w").write(db)
+
+          # Patch main.py: FRONTEND_DIR legge da env se frozen
+          main = open("backend/main.py").read()
+          old = "FRONTEND_DIR = Path(__file__).parent.parent / \"frontend\""
+          new = (
+              "import os as _os\n"
+              "FRONTEND_DIR = Path(_os.environ.get('CINELOG_FRONTEND_DIR',\n"
+              "    Path(__file__).parent.parent / 'frontend'))"
+          )
+          main = main.replace(old, new)
+          open("backend/main.py", "w").write(main)
+
+      # 6. Compila con PyInstaller
+      - name: Compila CineLog.exe
+        run: |
+          pyinstaller `
+            --onefile `
+            --name CineLog `
+            --noconsole `
+            --add-data "frontend;frontend" `
+            --add-data "backend;backend" `
+            --hidden-import uvicorn.logging `
+            --hidden-import uvicorn.loops `
+            --hidden-import uvicorn.loops.auto `
+            --hidden-import uvicorn.protocols `
+            --hidden-import uvicorn.protocols.http `
+            --hidden-import uvicorn.protocols.http.auto `
+            --hidden-import uvicorn.protocols.websockets `
+            --hidden-import uvicorn.protocols.websockets.auto `
+            --hidden-import uvicorn.lifespan `
+            --hidden-import uvicorn.lifespan.on `
+            --hidden-import aiosqlite `
+            --hidden-import fastapi `
+            entrypoint.py
+        shell: pwsh
+
+      # 7. Determina la versione per il nome del file
+      - name: Determina versione
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      # 8. Rinomina l'exe con la versione
+      - name: Rinomina exe
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          Rename-Item "dist\CineLog.exe" "dist\CineLog-$version-windows.exe"
+
+      # 9. Crea la GitHub Release e allega l'exe
+      - name: Crea Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: "CineLog ${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## CineLog ${{ steps.version.outputs.VERSION }}
+
+            ### Installazione
+            1. Scarica `CineLog-${{ steps.version.outputs.VERSION }}-windows.exe`
+            2. Mettilo in una cartella dedicata (es. `C:\CineLog\`)
+            3. Doppio click — il server parte su http://localhost:8000
+            4. (Opzionale) Crea `config.js` nella stessa cartella per le chiavi API
+
+            ### Note
+            - `cinelog.db` viene creato automaticamente nella stessa cartella dell'exe
+            - Windows Defender potrebbe mostrare un avviso: clicca "Ulteriori informazioni" → "Esegui comunque"
+            - Richiede Windows 10/11 x64
+          files: dist/CineLog-${{ steps.version.outputs.VERSION }}-windows.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
