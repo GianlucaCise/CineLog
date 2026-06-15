@@ -46,6 +46,7 @@ cinelog/
 │   └── config.js            # Tua configurazione — non pubblicare!
 ├── start.bat                # Avvia il server
 ├── update-cache-version.bat # Invalida cache PWA dopo modifiche manuali
+├── favicon.ico
 └── README.md
 ```
 
