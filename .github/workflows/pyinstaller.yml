@@ -139,10 +139,13 @@ jobs:
       - name: Rinomina exe
         shell: pwsh
         run: |
-          $version = "${{ steps.version.outputs.VERSION }}"
-          Rename-Item "dist\CineLog.exe" "dist\CineLog-$version-windows.exe"
+          $ver = "${{ steps.version.outputs.VERSION }}"
+          $src = "dist\CineLog.exe"
+          $dst = "dist\CineLog-$ver-windows.exe"
+          Copy-Item $src $dst
+          Remove-Item $src
 
-      # 9. Crea la GitHub Release e allega l'exe
+            # 9. Crea la GitHub Release e allega l'exe
       - name: Crea Release
         uses: softprops/action-gh-release@v2
         with:
@@ -162,6 +165,7 @@ jobs:
             - Windows Defender potrebbe mostrare un avviso: clicca "Ulteriori informazioni" → "Esegui comunque"
             - Richiede Windows 10/11 x64
           files: dist/CineLog-${{ steps.version.outputs.VERSION }}-windows.exe
+          # Note: Rename-Item moves file to dist parent, adjust if needed
           draft: false
           prerelease: false
         env:
