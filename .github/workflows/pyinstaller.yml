@@ -49,60 +49,70 @@ jobs:
           import os
           from pathlib import Path
 
-          # Quando PyInstaller estrae i file, li mette in _MEIPASS
-          # Dobbiamo puntare FRONTEND_DIR alla cartella estratta
+          # Fix stdout/stderr quando compilato con PyInstaller
+          # (evita AttributeError: NoneType has no attribute isatty)
           if getattr(sys, "frozen", False):
               BASE_DIR = Path(sys._MEIPASS)
+              exe_dir  = Path(sys.executable).parent
+              log_path = exe_dir / "cinelog.log"
+              log_file = open(log_path, "a", encoding="utf-8")
+              sys.stdout = log_file
+              sys.stderr = log_file
           else:
               BASE_DIR = Path(__file__).parent
+              exe_dir  = BASE_DIR
 
-          # Sovrascrivi FRONTEND_DIR in main.py prima dell'import
-          import importlib.util, types
-          spec = importlib.util.spec_from_file_location("database", BASE_DIR / "backend" / "database.py")
-          # Patch del path frontend
           os.environ["CINELOG_FRONTEND_DIR"] = str(BASE_DIR / "frontend")
-          os.environ["CINELOG_DB_DIR"] = str(Path(sys.executable).parent if getattr(sys, "frozen", False) else BASE_DIR / "backend")
+          os.environ["CINELOG_DB_DIR"]       = str(exe_dir)
 
           import uvicorn
           sys.path.insert(0, str(BASE_DIR / "backend"))
           from main import app
 
           if __name__ == "__main__":
-              print("CineLog avviato su http://localhost:8000")
-              print("Premi Ctrl+C per fermare.")
-              uvicorn.run(app, host="127.0.0.1", port=8000)
+              import webbrowser, threading
+              def open_browser():
+                  import time; time.sleep(1.5)
+                  webbrowser.open("http://localhost:8000")
+              threading.Thread(target=open_browser, daemon=True).start()
+              uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None)
           '''
           with open("entrypoint.py", "w") as f:
               f.write(entrypoint)
 
-      # 5. Patch di database.py e main.py per leggere i path da env
+      # 5. Patch di database.py e main.py per leggere i path da variabili d'ambiente
+      #    gui.py imposta CINELOG_FRONTEND_DIR e CINELOG_DB_DIR prima degli import
       - name: Patch path per PyInstaller
         shell: python
         run: |
           import re
 
-          # Patch database.py: DB_PATH legge da env se frozen
+          # Patch database.py
           db = open("backend/database.py").read()
-          old = "DB_PATH = Path(__file__).parent / \"cinelog.db\""
-          new = (
-              "import os as _os\n"
-              "DB_PATH = Path(_os.environ.get('CINELOG_DB_DIR', Path(__file__).parent)) / 'cinelog.db'"
-          )
-          db = db.replace(old, new)
-          open("backend/database.py", "w").write(db)
+          if "CINELOG_DB_DIR" not in db:
+              old = 'DB_PATH = Path(__file__).parent / "cinelog.db"'
+              new = ('import os as _os\n'
+                     "DB_PATH = Path(_os.environ.get('CINELOG_DB_DIR', Path(__file__).parent)) / 'cinelog.db'")
+              db = db.replace(old, new)
+              open("backend/database.py", "w").write(db)
+              print("Patched database.py")
+          else:
+              print("database.py already patched")
 
-          # Patch main.py: FRONTEND_DIR legge da env se frozen
+          # Patch main.py
           main = open("backend/main.py").read()
-          old = "FRONTEND_DIR = Path(__file__).parent.parent / \"frontend\""
-          new = (
-              "import os as _os\n"
-              "FRONTEND_DIR = Path(_os.environ.get('CINELOG_FRONTEND_DIR',\n"
-              "    Path(__file__).parent.parent / 'frontend'))"
-          )
-          main = main.replace(old, new)
-          open("backend/main.py", "w").write(main)
+          if "CINELOG_FRONTEND_DIR" not in main:
+              old = 'FRONTEND_DIR = Path(__file__).parent.parent / "frontend"'
+              new = ('import os as _os\n'
+                     "FRONTEND_DIR = Path(_os.environ.get('CINELOG_FRONTEND_DIR',\n"
+                     "    Path(__file__).parent.parent / 'frontend'))")
+              main = main.replace(old, new)
+              open("backend/main.py", "w").write(main)
+              print("Patched main.py")
+          else:
+              print("main.py already patched")
 
-      # 6. Compila con PyInstaller
+      # 6. Compila con PyInstaller usando gui.py come entrypoint
       - name: Compila CineLog.exe
         run: |
           pyinstaller `
@@ -129,9 +139,13 @@ jobs:
             --hidden-import starlette.routing `
             --hidden-import starlette.middleware `
             --hidden-import starlette.middleware.cors `
+            --hidden-import webview `
+            --hidden-import webview.platforms `
+            --hidden-import webview.platforms.winforms `
             --collect-all fastapi `
             --collect-all starlette `
-            entrypoint.py
+            --collect-all webview `
+            backend/gui.py
         shell: pwsh
 
       # 7. Determina la versione per il nome del file

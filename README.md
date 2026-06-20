@@ -10,7 +10,11 @@ Diario personale di film e serie TV con backend FastAPI + SQLite.
 Doppio click su start.bat
 ```
 
-Apre automaticamente il server su **http://localhost:8000**.  
+Chiede come vuoi avviare CineLog:
+
+- **[1] Finestra app** — apre una finestra desktop nativa (PyWebView), nessun browser necessario
+- **[2] Solo server** — avvia solo il backend, poi apri `http://localhost:8000` nel browser
+
 Al primo avvio installa le dipendenze Python automaticamente.
 
 > **Nota Python:** richiede Python 3.10, 3.11 o 3.12. Python 3.14 non è ancora supportato
@@ -46,7 +50,6 @@ cinelog/
 │   └── config.js            # Tua configurazione — non pubblicare!
 ├── start.bat                # Avvia il server
 ├── update-cache-version.bat # Invalida cache PWA dopo modifiche manuali
-├── favicon.ico
 └── README.md
 ```
 
@@ -207,8 +210,32 @@ Per pubblicare il solo frontend su **GitHub Pages**:
 2. Inserisci la chiave TMDB direttamente nelle impostazioni dell'app
 3. Abilita GitHub Pages dalla branch `main`
 
-Per la **GitHub Action** che compila automaticamente un `.exe` ad ogni release,
-il supporto è in arrivo — vedi la sezione Issues del repository.
+### GitHub Action — Build automatico `.exe`
+
+Ad ogni tag `v*` (es. `v1.0`, `v2.1`) la Action:
+1. Gira su un runner Windows
+2. Compila tutto in `CineLog-vX.Y-windows.exe` con PyInstaller
+3. Crea una **GitHub Release** con l'exe allegato e pronto al download
+
+**Come pubblicare una release:**
+```bash
+git tag v1.0
+git push origin v1.0
+```
+
+Puoi anche avviarla manualmente da **GitHub → Actions → Build CineLog.exe → Run workflow**.
+
+**Struttura cartella per l'utente finale:**
+```
+CineLog/
+├── CineLog-v1.0-windows.exe   ← scaricato dalla Release
+├── cinelog.db                  ← creato automaticamente
+└── config.js                   ← opzionale, per le chiavi API
+```
+
+> Windows Defender può mostrare un avviso sul file. Clicca
+> "Ulteriori informazioni" → "Esegui comunque" — è normale per exe
+> non firmati digitalmente.
 
 ---
 

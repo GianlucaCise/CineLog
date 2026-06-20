@@ -17,7 +17,9 @@ import time
 
 from database import init_db, get_db, row_to_media, row_to_saga, DB_PATH
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+import os as _os
+FRONTEND_DIR = Path(_os.environ.get('CINELOG_FRONTEND_DIR',
+    Path(__file__).parent.parent / 'frontend'))
 
 
 # ─── LIFESPAN ──────────────────────────────────────────────

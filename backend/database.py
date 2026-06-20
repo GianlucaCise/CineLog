@@ -7,7 +7,8 @@ import aiosqlite
 import json
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "cinelog.db"
+import os as _os
+DB_PATH = Path(_os.environ.get('CINELOG_DB_DIR', Path(__file__).parent)) / 'cinelog.db'
 
 
 async def get_db() -> aiosqlite.Connection:
