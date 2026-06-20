@@ -2,4 +2,4 @@ fastapi
 uvicorn[standard]
 aiosqlite
 pydantic
-pywebview==5.3.4
+pywebview
